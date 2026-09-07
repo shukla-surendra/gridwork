@@ -24,7 +24,7 @@ router = APIRouter(
     },
 )
 
-gate = require_module_enabled(MODULE_KEY)
+gate = require_module_enabled(MODULE_KEY, default_enabled=True)
 
 
 # -- Warehouses -------------------------------------------------------------

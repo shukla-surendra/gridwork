@@ -3,20 +3,25 @@ from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
 from modules.access import require_module_enabled
-from handlers.crm_handler import CRMHandler
-from commands.crm_cmd import (
-    CompanyCreate, CompanyUpdate, CompanyResponse,
-    ContactCreate, ContactUpdate, ContactResponse,
-    DealCreate, DealUpdate, DealResponse,
-    ContactActivityCreate, ContactActivityUpdate, ContactActivityResponse,
-    DealActivityCreate, DealActivityUpdate, DealActivityResponse
+from .handlers import CRMHandler
+from .commands import (
+    CompanyCreate, CompanyUpdate,
+    ContactCreate, ContactUpdate, DealCreate, DealUpdate,
+    ContactActivityCreate, ContactActivityUpdate,
+    DealActivityCreate, DealActivityUpdate
 )
+from .dto import (
+    CompanyResponse, ContactResponse, DealResponse,
+    ContactActivityResponse, DealActivityResponse,
+)
+
+MODULE_KEY = "crm"
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/crm", tags=["crm"])
 
 # Already a live, always-on feature before the module registry existed --
 # default_enabled=True so no existing workspace loses it silently.
-gate = require_module_enabled("crm", default_enabled=True)
+gate = require_module_enabled(MODULE_KEY, default_enabled=True)
 
 # Company routes
 @router.post("/companies", response_model=CompanyResponse)
@@ -165,4 +170,4 @@ def delete_deal_activity(workspace_id: str, deal_id: UUID, activity_id: UUID, us
     handler = CRMHandler()
     return handler.delete_deal_activity(activity_id)
 
-crm_router = router 
+crm_router = router

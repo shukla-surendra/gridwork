@@ -2,7 +2,6 @@ from .tasks_controller import tasks_router
 from .board_controller import board_router
 from .timeblock_controller import timeblock_router
 from .notification_controller import notification_router
-from .crm_controller import crm_router
 from .template_controller import template_router
 from .workspace_controller import workspace_router
 from .settings_controller import settings_router

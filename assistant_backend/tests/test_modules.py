@@ -10,10 +10,12 @@ def test_list_modules_shows_correct_defaults(client, signed_up_user):
     assert resp.status_code == status.HTTP_200_OK, resp.text
     by_key = {m["key"]: m["enabled"] for m in resp.json()}
 
-    # Inventory is a genuinely new/optional module: off until someone
-    # opts in. CRM/Wiki/etc. were already-live features adopted into the
-    # registry: on by default so no existing workspace loses them.
-    assert by_key["inventory"] is False
+    # Every module -- packaged (Inventory, HR, School ERP) and adopted
+    # (CRM, Wiki, etc.) -- defaults to enabled, so a fresh workspace gets
+    # the full feature set without anyone having to opt in module by
+    # module. A workspace can still explicitly disable one via the toggle
+    # endpoint (see test_owner_can_toggle_a_module below).
+    assert by_key["inventory"] is True
     assert by_key["crm"] is True
     assert by_key["wiki"] is True
 
@@ -48,7 +50,16 @@ def test_disabled_module_routes_403(client, signed_up_user):
     workspace_id = signed_up_user["workspace_id"]
     headers = signed_up_user["headers"]
 
-    # Inventory starts disabled -- never toggled here.
+    # Inventory is enabled by default now -- explicitly disable it first so
+    # this test actually exercises the 403 enforcement path instead of
+    # relying on a default that no longer exists.
+    disabled = client.put(
+        f"/api/v1/workspaces/{workspace_id}/modules/inventory",
+        headers=headers,
+        json={"enabled": False},
+    )
+    assert disabled.status_code == status.HTTP_200_OK, disabled.text
+
     resp = client.get(f"/api/v1/workspaces/{workspace_id}/inventory/products", headers=headers)
     assert resp.status_code == status.HTTP_403_FORBIDDEN
 

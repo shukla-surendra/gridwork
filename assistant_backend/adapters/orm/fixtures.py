@@ -6,8 +6,15 @@ from .models.pg_models import (
     User, UserSettings, Task, Workspace, Board,
     Reminder, Notification, Comment, Tag, Page, Block, Database,
     DatabaseEntry, Template, Activity, Integration,
-    Contact, Deal, ContactActivity, DealActivity, Chat, ChatMessage,
+    Chat, ChatMessage,
     workspace_users, task_tags
+)
+from modules.crm.models import Contact, Deal, ContactActivity, DealActivity
+from modules.hr.models import Employee, LeaveRequest, OnboardingTemplate
+from modules.inventory.models import Warehouse, Product, StockMovement
+from modules.school_erp.models import (
+    Teacher, SchoolClass, Student, Attendance,
+    FeeStructure, FeePayment, Exam, ExamResult,
 )
 from constants import TaskStatus, TaskType, TaskPriority, UserStatus, UserRoles, UserType
 
@@ -938,6 +945,146 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     db.add_all(deal_activities)
     db.commit()
 
+    # ---- Inventory: Warehouses, Products, Stock movements --------------------
+    warehouses = [
+        Warehouse(warehouse_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Main Warehouse", location="Bengaluru"),
+        Warehouse(warehouse_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Overflow Storage", location="Pune"),
+    ]
+    db.add_all(warehouses)
+    db.commit()
+
+    products = [
+        Product(product_id=uuid.uuid4(), workspace_id=workspace.workspace_id, sku="WM-100", name="Wireless Mouse", unit="pcs", unit_price=15.99, reorder_level=20),
+        Product(product_id=uuid.uuid4(), workspace_id=workspace.workspace_id, sku="UC-200", name="USB-C Cable", unit="pcs", unit_price=6.50, reorder_level=50),
+        Product(product_id=uuid.uuid4(), workspace_id=workspace.workspace_id, sku="MK-300", name="Mechanical Keyboard", unit="pcs", unit_price=45.00, reorder_level=10),
+    ]
+    db.add_all(products)
+    db.commit()
+
+    # In-then-out-then-adjustment per product -- current stock is a SUM
+    # query over these, never a stored counter (see StockMovement's own
+    # docstring), so the fixture needs real history, not just a starting
+    # balance.
+    stock_movements = [
+        StockMovement(movement_id=uuid.uuid4(), workspace_id=workspace.workspace_id, product_id=products[0].product_id, warehouse_id=warehouses[0].warehouse_id, movement_type="in", quantity=100, reference="PO-1001", created_by=owner.user_id),
+        StockMovement(movement_id=uuid.uuid4(), workspace_id=workspace.workspace_id, product_id=products[0].product_id, warehouse_id=warehouses[0].warehouse_id, movement_type="out", quantity=15, reference="SO-2001", created_by=teammate.user_id),
+        StockMovement(movement_id=uuid.uuid4(), workspace_id=workspace.workspace_id, product_id=products[1].product_id, warehouse_id=warehouses[0].warehouse_id, movement_type="in", quantity=200, reference="PO-1002", created_by=owner.user_id),
+        StockMovement(movement_id=uuid.uuid4(), workspace_id=workspace.workspace_id, product_id=products[2].product_id, warehouse_id=warehouses[1].warehouse_id, movement_type="in", quantity=30, reference="PO-1003", created_by=owner.user_id),
+        StockMovement(movement_id=uuid.uuid4(), workspace_id=workspace.workspace_id, product_id=products[2].product_id, warehouse_id=warehouses[1].warehouse_id, movement_type="adjustment", quantity=-2, reference="Damaged in transit", created_by=owner.user_id),
+    ]
+    db.add_all(stock_movements)
+    db.commit()
+
+    # ---- HR: Employees, Leave requests, Onboarding templates ------------------
+    # One Employee record per existing User -- Employee.user_id is a real
+    # FK, not a copy of user data, so this links back to the same
+    # owner/teammate/designer/qa_engineer accounts everything else here
+    # uses. Manager chain: owner -> teammate -> qa_engineer, owner -> designer,
+    # so the org chart (Employee.manager_id) actually has more than one level.
+    employees = [
+        Employee(employee_id=uuid.uuid4(), workspace_id=workspace.workspace_id, user_id=owner.user_id, job_title="Engineering Manager", department="Engineering", employment_type="full_time", status="active", start_date=(now - timedelta(days=730)).date(), leave_allocations={"vacation": 20, "sick": 10}),
+        Employee(employee_id=uuid.uuid4(), workspace_id=workspace.workspace_id, user_id=teammate.user_id, job_title="Software Engineer", department="Engineering", employment_type="full_time", status="active", start_date=(now - timedelta(days=400)).date(), leave_allocations={"vacation": 15, "sick": 8}),
+        Employee(employee_id=uuid.uuid4(), workspace_id=workspace.workspace_id, user_id=designer.user_id, job_title="Product Designer", department="Design", employment_type="full_time", status="active", start_date=(now - timedelta(days=300)).date(), leave_allocations={"vacation": 15, "sick": 8}),
+        Employee(employee_id=uuid.uuid4(), workspace_id=workspace.workspace_id, user_id=qa_engineer.user_id, job_title="QA Engineer", department="Engineering", employment_type="contractor", status="active", start_date=(now - timedelta(days=60)).date(), leave_allocations={"vacation": 10, "sick": 5},
+                 # Simulates having already run apply_template_to_employee()
+                 # against the "Engineering Onboarding" template below --
+                 # written directly here since fixtures build ORM objects,
+                 # not API calls, but the shape matches exactly.
+                 onboarding_checklist=[
+                     {"id": str(uuid.uuid4()), "text": "Set up laptop", "done": True},
+                     {"id": str(uuid.uuid4()), "text": "Access to GitHub", "done": True},
+                     {"id": str(uuid.uuid4()), "text": "Meet the team", "done": False},
+                     {"id": str(uuid.uuid4()), "text": "Sign NDA", "done": False},
+                 ]),
+    ]
+    db.add_all(employees)
+    db.commit()
+    owner_emp, teammate_emp, designer_emp, qa_emp = employees
+    teammate_emp.manager_id = owner_emp.employee_id
+    designer_emp.manager_id = owner_emp.employee_id
+    qa_emp.manager_id = teammate_emp.employee_id
+    db.commit()
+
+    leave_requests = [
+        LeaveRequest(leave_request_id=uuid.uuid4(), workspace_id=workspace.workspace_id, employee_id=teammate_emp.employee_id, leave_type="vacation", start_date=(now - timedelta(days=10)).date(), end_date=(now - timedelta(days=6)).date(), days=5, reason="Family trip", status="approved", reviewed_by=owner_emp.employee_id, reviewed_at=now - timedelta(days=12), review_note="Enjoy!"),
+        LeaveRequest(leave_request_id=uuid.uuid4(), workspace_id=workspace.workspace_id, employee_id=designer_emp.employee_id, leave_type="sick", start_date=(now + timedelta(days=2)).date(), end_date=(now + timedelta(days=2)).date(), days=1, reason="Doctor's appointment", status="pending"),
+    ]
+    db.add_all(leave_requests)
+    db.commit()
+
+    onboarding_templates = [
+        OnboardingTemplate(template_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Engineering Onboarding", items=["Set up laptop", "Access to GitHub", "Meet the team", "Sign NDA"]),
+        OnboardingTemplate(template_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Design Onboarding", items=["Get Figma access", "Meet the team", "Review brand guidelines"]),
+    ]
+    db.add_all(onboarding_templates)
+    db.commit()
+
+    # ---- School ERP: Teachers, Classes, Students, Attendance, Fees, Exams -----
+    teachers = [
+        Teacher(teacher_id=uuid.uuid4(), workspace_id=workspace.workspace_id, first_name="Anita", last_name="Verma", email="anita.verma@example.edu", subject_specialization="Mathematics"),
+        Teacher(teacher_id=uuid.uuid4(), workspace_id=workspace.workspace_id, first_name="Rahul", last_name="Singh", email="rahul.singh@example.edu", subject_specialization="Science"),
+    ]
+    db.add_all(teachers)
+    db.commit()
+
+    school_classes = [
+        SchoolClass(class_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Grade 5 - A", academic_year="2026-2027", capacity=30, homeroom_teacher_id=teachers[0].teacher_id),
+        SchoolClass(class_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Grade 6 - B", academic_year="2026-2027", capacity=28, homeroom_teacher_id=teachers[1].teacher_id),
+    ]
+    db.add_all(school_classes)
+    db.commit()
+
+    students = [
+        Student(student_id=uuid.uuid4(), workspace_id=workspace.workspace_id, first_name="Aarav", last_name="Shah", admission_number="2026-001", class_id=school_classes[0].class_id, guardian_name="Meena Shah", guardian_contact="+91-98765-00001"),
+        Student(student_id=uuid.uuid4(), workspace_id=workspace.workspace_id, first_name="Diya", last_name="Mehta", admission_number="2026-002", class_id=school_classes[0].class_id, guardian_name="Rakesh Mehta", guardian_contact="+91-98765-00002"),
+        Student(student_id=uuid.uuid4(), workspace_id=workspace.workspace_id, first_name="Kabir", last_name="Joshi", admission_number="2026-003", class_id=school_classes[1].class_id, guardian_name="Sunita Joshi", guardian_contact="+91-98765-00003"),
+        Student(student_id=uuid.uuid4(), workspace_id=workspace.workspace_id, first_name="Sana", last_name="Ali", admission_number="2026-004", class_id=school_classes[1].class_id, guardian_name="Imran Ali", guardian_contact="+91-98765-00004"),
+    ]
+    db.add_all(students)
+    db.commit()
+
+    attendance_records = [
+        Attendance(attendance_id=uuid.uuid4(), workspace_id=workspace.workspace_id, student_id=students[0].student_id, class_id=school_classes[0].class_id, date=now.date(), status="present", marked_by=owner.user_id),
+        Attendance(attendance_id=uuid.uuid4(), workspace_id=workspace.workspace_id, student_id=students[1].student_id, class_id=school_classes[0].class_id, date=now.date(), status="absent", marked_by=owner.user_id, notes="Called in sick"),
+        Attendance(attendance_id=uuid.uuid4(), workspace_id=workspace.workspace_id, student_id=students[2].student_id, class_id=school_classes[1].class_id, date=now.date(), status="present", marked_by=teammate.user_id),
+        Attendance(attendance_id=uuid.uuid4(), workspace_id=workspace.workspace_id, student_id=students[3].student_id, class_id=school_classes[1].class_id, date=now.date(), status="late", marked_by=teammate.user_id),
+    ]
+    db.add_all(attendance_records)
+    db.commit()
+
+    fee_structures = [
+        FeeStructure(fee_structure_id=uuid.uuid4(), workspace_id=workspace.workspace_id, class_id=school_classes[0].class_id, academic_year="2026-2027", term="Term 1", amount=5000, due_date=(now + timedelta(days=15)).date(), description="Term 1 tuition"),
+        FeeStructure(fee_structure_id=uuid.uuid4(), workspace_id=workspace.workspace_id, class_id=school_classes[1].class_id, academic_year="2026-2027", term="Term 1", amount=5500, due_date=(now + timedelta(days=15)).date(), description="Term 1 tuition"),
+    ]
+    db.add_all(fee_structures)
+    db.commit()
+
+    fee_payments = [
+        # Aarav paid in full, Diya only partially -- so the fee-balance
+        # endpoint has something real to compute against.
+        FeePayment(payment_id=uuid.uuid4(), workspace_id=workspace.workspace_id, student_id=students[0].student_id, fee_structure_id=fee_structures[0].fee_structure_id, amount=5000, payment_date=(now - timedelta(days=5)).date(), payment_method="online"),
+        FeePayment(payment_id=uuid.uuid4(), workspace_id=workspace.workspace_id, student_id=students[1].student_id, fee_structure_id=fee_structures[0].fee_structure_id, amount=2000, payment_date=(now - timedelta(days=3)).date(), payment_method="cash"),
+        FeePayment(payment_id=uuid.uuid4(), workspace_id=workspace.workspace_id, student_id=students[2].student_id, fee_structure_id=fee_structures[1].fee_structure_id, amount=5500, payment_date=(now - timedelta(days=2)).date(), payment_method="bank_transfer"),
+    ]
+    db.add_all(fee_payments)
+    db.commit()
+
+    exams = [
+        Exam(exam_id=uuid.uuid4(), workspace_id=workspace.workspace_id, class_id=school_classes[0].class_id, name="Midterm", subject="Mathematics", exam_date=(now - timedelta(days=7)).date(), max_marks=100, academic_year="2026-2027"),
+        Exam(exam_id=uuid.uuid4(), workspace_id=workspace.workspace_id, class_id=school_classes[1].class_id, name="Midterm", subject="Science", exam_date=(now - timedelta(days=7)).date(), max_marks=100, academic_year="2026-2027"),
+    ]
+    db.add_all(exams)
+    db.commit()
+
+    exam_results = [
+        ExamResult(result_id=uuid.uuid4(), workspace_id=workspace.workspace_id, exam_id=exams[0].exam_id, student_id=students[0].student_id, marks_obtained=85),
+        ExamResult(result_id=uuid.uuid4(), workspace_id=workspace.workspace_id, exam_id=exams[0].exam_id, student_id=students[1].student_id, marks_obtained=72, remarks="Needs more practice with fractions"),
+        ExamResult(result_id=uuid.uuid4(), workspace_id=workspace.workspace_id, exam_id=exams[1].exam_id, student_id=students[2].student_id, marks_obtained=91, remarks="Excellent"),
+        ExamResult(result_id=uuid.uuid4(), workspace_id=workspace.workspace_id, exam_id=exams[1].exam_id, student_id=students[3].student_id, marks_obtained=78),
+    ]
+    db.add_all(exam_results)
+    db.commit()
+
     # ---- Chat + ChatMessages (the AI assistant feature) ------------------
     chat = Chat(
         chat_id=uuid.uuid4(),
@@ -979,6 +1126,20 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
         "deals": deals,
         "contact_activities": contact_activities,
         "deal_activities": deal_activities,
+        "warehouses": warehouses,
+        "products": products,
+        "stock_movements": stock_movements,
+        "employees": employees,
+        "leave_requests": leave_requests,
+        "onboarding_templates": onboarding_templates,
+        "teachers": teachers,
+        "school_classes": school_classes,
+        "students": students,
+        "attendance_records": attendance_records,
+        "fee_structures": fee_structures,
+        "fee_payments": fee_payments,
+        "exams": exams,
+        "exam_results": exam_results,
         "chat": chat,
         "chat_messages": chat_messages,
     }

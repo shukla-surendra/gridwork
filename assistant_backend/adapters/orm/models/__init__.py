@@ -17,10 +17,6 @@ from .pg_models import (
     Template,
     Activity,
     Integration,
-    Contact,
-    Deal,
-    ContactActivity,
-    DealActivity,
     Chat,
     ChatMessage
 )
@@ -44,10 +40,6 @@ __all__ = [
     'Template',
     'Activity',
     'Integration',
-    'Contact',
-    'Deal',
-    'ContactActivity',
-    'DealActivity',
     'Chat',
     'ChatMessage'
 ]

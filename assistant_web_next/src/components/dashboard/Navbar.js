@@ -50,10 +50,11 @@ import {
   FiBell,
   FiBox
 } from 'react-icons/fi';
-import { 
+import {
   MdOutlineDashboard,
   MdOutlineSpaceDashboard,
-  MdOutlineAnalytics
+  MdOutlineAnalytics,
+  MdSchool
 } from 'react-icons/md';
 
 import RouterLink from 'next/link';
@@ -64,8 +65,8 @@ import ModuleService from "../../services/ModuleService";
 // Plug-and-play modules -- a module only shows up here once it's both
 // registered on the backend AND has a known frontend route. Adding a new
 // module's nav entry means adding one line to each of these two maps.
-const MODULE_ICONS = { box: FiBox, users: FiUsers };
-const MODULE_ROUTES = { inventory: "/inventory", hr: "/hr" };
+const MODULE_ICONS = { box: FiBox, users: FiUsers, school: MdSchool };
+const MODULE_ROUTES = { inventory: "/inventory", hr: "/hr", school_erp: "/school-erp" };
 
 const Navbar = ({ isCollapsed, onToggle }) => {
   const router = useRouter();

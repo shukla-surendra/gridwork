@@ -9,6 +9,14 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import your models
 from adapters.orm.models.pg_models import Base  # noqa: F401 -- importing this registers every model on Base.metadata
+# Packaged plug-and-play modules (modules/<key>/models.py) define their
+# tables on this same Base but were never otherwise imported here --
+# without this, autogenerate's diff wouldn't know these tables exist and
+# could propose DROPping them (present in the real DB, absent from
+# target_metadata). Same Base instance everywhere means this alone is
+# enough to register them; no per-module import needed.
+from modules.registry import import_all_module_models  # noqa: F401
+import_all_module_models()
 from config import settings
 
 # this is the Alembic Config object, which provides

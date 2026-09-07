@@ -4,8 +4,8 @@ from typing import List
 from uuid import UUID
 import logging
 
-from adapters.orm.models.pg_models import Company, Contact, Deal, ContactActivity, DealActivity
-from commands.crm_cmd import (
+from .models import Company, Contact, Deal, ContactActivity, DealActivity
+from .commands import (
     CompanyCreate, CompanyUpdate,
     ContactCreate, ContactUpdate, DealCreate, DealUpdate,
     ContactActivityCreate, DealActivityCreate,
@@ -142,10 +142,14 @@ class CRMHandler:
             self.db.add(db_deal)
             self.db.commit()
             self.db.refresh(db_deal)
-            _ = db_deal.contact  # force the lazy load now, while self.db is still open --
-            # DealResponse.contact needs it, and self.db closes in __del__ whenever this
-            # handler gets garbage collected, which can happen before FastAPI serializes
-            # the response (non-deterministic timing -> DetachedInstanceError under load).
+            _ = db_deal.contact.company_ref  # force both levels of lazy load now, while
+            # self.db is still open -- DealResponse.contact is a ContactResponse, which
+            # itself has a company_ref field, so both Deal.contact AND
+            # Contact.company_ref need loading, not just the first hop. self.db closes
+            # in __del__ whenever this handler gets garbage collected, which can happen
+            # before FastAPI serializes the response (non-deterministic timing ->
+            # DetachedInstanceError under load -- this exact gap, missing only the
+            # second hop, was reproducible via pytest tests/test_crm.py).
             return db_deal
         except Exception as e:
             self.db.rollback()
@@ -154,7 +158,7 @@ class CRMHandler:
 
     def get_deal(self, deal_id: UUID) -> Deal:
         deal = self.db.query(Deal).options(
-            joinedload(Deal.contact)
+            joinedload(Deal.contact).joinedload(Contact.company_ref)
         ).filter(
             Deal.deal_id == deal_id,
             Deal.is_deleted == False
@@ -165,7 +169,7 @@ class CRMHandler:
 
     def get_workspace_deals(self, workspace_id: UUID) -> List[Deal]:
         return self.db.query(Deal).options(
-            joinedload(Deal.contact)
+            joinedload(Deal.contact).joinedload(Contact.company_ref)
         ).filter(
             Deal.workspace_id == workspace_id,
             Deal.is_deleted == False
@@ -173,7 +177,7 @@ class CRMHandler:
 
     def get_contact_deals(self, contact_id: UUID) -> List[Deal]:
         return self.db.query(Deal).options(
-            joinedload(Deal.contact)
+            joinedload(Deal.contact).joinedload(Contact.company_ref)
         ).filter(
             Deal.contact_id == contact_id,
             Deal.is_deleted == False
@@ -186,6 +190,10 @@ class CRMHandler:
                 setattr(db_deal, key, value)
             self.db.commit()
             self.db.refresh(db_deal)
+            # get_deal()'s joinedload chain loaded this before commit(), but
+            # expire_on_commit=True (the session default) marks it stale on
+            # every commit -- re-force it now, same reasoning as create_deal.
+            _ = db_deal.contact.company_ref
             return db_deal
         except Exception as e:
             self.db.rollback()
@@ -308,4 +316,4 @@ class CRMHandler:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Error deleting deal activity: {str(e)}")
-            raise HTTPException(status_code=500, detail="Failed to delete deal activity") 
+            raise HTTPException(status_code=500, detail="Failed to delete deal activity")

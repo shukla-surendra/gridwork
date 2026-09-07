@@ -7,4 +7,5 @@ MANIFEST = ModuleManifest(
     description="Employee directory, leave requests, onboarding, and org chart.",
     icon="users",
     router=hr_router,
+    default_enabled=True,
 )

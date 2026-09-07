@@ -96,5 +96,16 @@ def test_inventory_routes_403_while_module_disabled(client, signed_up_user):
     workspace_id = signed_up_user["workspace_id"]
     headers = signed_up_user["headers"]
 
+    # Inventory is enabled by default (like every module) as of the
+    # "enable all modules by default" change -- explicitly disable it here
+    # to exercise the 403 path, rather than relying on a default that no
+    # longer exists.
+    disabled = client.put(
+        f"/api/v1/workspaces/{workspace_id}/modules/inventory",
+        headers=headers,
+        json={"enabled": False},
+    )
+    assert disabled.status_code == status.HTTP_200_OK, disabled.text
+
     resp = client.get(f"/api/v1/workspaces/{workspace_id}/inventory/warehouses", headers=headers)
     assert resp.status_code == status.HTTP_403_FORBIDDEN

@@ -13,21 +13,24 @@ Two kinds of entries live here:
    manifests back through GET /workspaces/{id}/modules.
    See MODULES.md for the full guide.
 
-2. Pre-existing features (CRM, Wiki, Database, Chat, Reports, Reminders,
+2. Pre-existing features (Wiki, Database, Chat, Reports, Reminders,
    Notifications, Templates) that were always-on before this registry
    existed and got "adopted" into it -- their code stays exactly where it
    already lived (controllers/, handlers/, commands/, dto/), only their
    routes gained a require_module_enabled(key, default_enabled=True) gate
-   (see e.g. controllers/crm_controller.py). They're declared as
+   (see e.g. controllers/page_controller.py). They're declared as
    manifests directly below (ADOPTED_MODULES) instead of getting their
    own modules/<key>/ package, since there's no new code to house -- this
    list is a one-time migration record, not an ongoing extension point.
+   CRM used to be here too -- it's now a full modules/crm/ package (the
+   first "adopted" feature actually migrated into one), which is why
+   ADOPTED_MODULES below is one entry shorter than this docstring's
+   original list.
 """
 import importlib
 import logging
 import pkgutil
 
-from controllers.crm_controller import crm_router
 from controllers.page_controller import page_router
 from controllers.database_controller import database_router
 from controllers.chat_controller import chat_router
@@ -45,7 +48,6 @@ logger = logging.getLogger(__name__)
 _RESERVED_NAMES = {"access", "manifest", "registry"}
 
 ADOPTED_MODULES = [
-    ModuleManifest(key="crm", name="CRM", description="Contacts, deals, and activity tracking.", icon="users", router=crm_router, default_enabled=True),
     ModuleManifest(key="wiki", name="Wiki", description="Nested pages and documents.", icon="book", router=page_router, default_enabled=True),
     ModuleManifest(key="database", name="Database", description="Structured tables with custom columns.", icon="database", router=database_router, default_enabled=True),
     ModuleManifest(key="chat", name="Chat", description="AI-assisted chat threads.", icon="chat", router=chat_router, default_enabled=True),
@@ -99,10 +101,11 @@ def import_all_module_models():
     """Import every auto-discovered module's models submodule (if it has
     one) so its tables register on Base.metadata -- needed by
     adapters.orm.models.database.init_db()'s create_all() (the test
-    suite's schema reset), since a model class that's never imported
-    anywhere is invisible to SQLAlchemy. Adopted pre-existing features
-    don't need this -- their models already live in pg_models.py and
-    init_db() already imports that module directly."""
+    suite's schema reset) and by migrations/env.py's autogenerate target,
+    since a model class that's never imported anywhere is invisible to
+    SQLAlchemy. Adopted pre-existing features (that still live in
+    pg_models.py) don't need this -- init_db() already imports that
+    module directly."""
     for name in _packaged_module_names():
         try:
             importlib.import_module(f"modules.{name}.models")

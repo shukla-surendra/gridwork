@@ -7,4 +7,5 @@ MANIFEST = ModuleManifest(
     description="Products, warehouses, and stock movements.",
     icon="box",
     router=inventory_router,
+    default_enabled=True,
 )

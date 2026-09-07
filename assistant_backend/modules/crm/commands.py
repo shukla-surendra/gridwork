@@ -1,7 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
+
 
 class CompanyBase(BaseModel):
     name: str
@@ -13,8 +14,10 @@ class CompanyBase(BaseModel):
     description: Optional[str] = None
     tags: Optional[List[str]] = None
 
+
 class CompanyCreate(CompanyBase):
     workspace_id: UUID
+
 
 class CompanyUpdate(BaseModel):
     # All optional (unlike CompanyBase) so a partial update -- e.g. just
@@ -28,14 +31,6 @@ class CompanyUpdate(BaseModel):
     description: Optional[str] = None
     tags: Optional[List[str]] = None
 
-class CompanyResponse(CompanyBase):
-    company_id: UUID
-    workspace_id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 class ContactBase(BaseModel):
     first_name: str
@@ -53,8 +48,10 @@ class ContactBase(BaseModel):
     notes: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
 
+
 class ContactCreate(ContactBase):
     workspace_id: UUID
+
 
 class ContactUpdate(BaseModel):
     # All optional (unlike ContactBase, which requires first_name/last_name)
@@ -75,15 +72,6 @@ class ContactUpdate(BaseModel):
     notes: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
 
-class ContactResponse(ContactBase):
-    contact_id: UUID
-    workspace_id: UUID
-    company_ref: Optional[CompanyResponse] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 class DealBase(BaseModel):
     title: str
@@ -98,9 +86,11 @@ class DealBase(BaseModel):
     status: str = "active"
     properties: Optional[Dict[str, Any]] = None
 
+
 class DealCreate(DealBase):
     workspace_id: UUID
     contact_id: UUID
+
 
 class DealUpdate(BaseModel):
     # All optional (unlike DealBase, which requires title/stage) so a
@@ -118,16 +108,6 @@ class DealUpdate(BaseModel):
     status: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
 
-class DealResponse(DealBase):
-    deal_id: UUID
-    workspace_id: UUID
-    contact_id: UUID
-    contact: Optional[ContactResponse] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 class ContactActivityBase(BaseModel):
     type: str
@@ -138,10 +118,12 @@ class ContactActivityBase(BaseModel):
     status: str = "pending"
     properties: Optional[Dict[str, Any]] = None
 
+
 class ContactActivityCreate(ContactActivityBase):
     workspace_id: UUID
     contact_id: UUID
     user_id: UUID
+
 
 class ContactActivityUpdate(BaseModel):
     type: Optional[str] = None
@@ -152,16 +134,6 @@ class ContactActivityUpdate(BaseModel):
     status: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
 
-class ContactActivityResponse(ContactActivityBase):
-    activity_id: UUID
-    workspace_id: UUID
-    contact_id: UUID
-    user_id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 class DealActivityBase(BaseModel):
     type: str
@@ -171,10 +143,12 @@ class DealActivityBase(BaseModel):
     new_stage: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
 
+
 class DealActivityCreate(DealActivityBase):
     workspace_id: UUID
     deal_id: UUID
     user_id: UUID
+
 
 class DealActivityUpdate(BaseModel):
     type: Optional[str] = None
@@ -183,14 +157,3 @@ class DealActivityUpdate(BaseModel):
     old_stage: Optional[str] = None
     new_stage: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
-
-class DealActivityResponse(DealActivityBase):
-    activity_id: UUID
-    workspace_id: UUID
-    deal_id: UUID
-    user_id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True

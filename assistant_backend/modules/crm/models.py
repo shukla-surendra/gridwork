@@ -78,6 +78,9 @@ class Deal(Base):
     tags = Column(JSONB, nullable=True)
     status = Column(String, nullable=False, default="active")
     properties = Column(JSONB, nullable=True)
+    # Soft reference to modules.billing.models.Quote.quote_id -- no FK
+    # constraint on purpose. See DealBase.quote_id in commands.py for why.
+    quote_id = Column(UUID(as_uuid=True), nullable=True)
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
     updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
@@ -128,4 +131,59 @@ class DealActivity(Base):
 
     workspace = relationship("Workspace", back_populates="deal_activities")
     deal = relationship("Deal", back_populates="activities")
+    user = relationship("User")
+
+
+class Lead(Base):
+    """Pre-qualification stage ahead of Contact/Deal -- the Zoho/Odoo
+    funnel this app didn't have at all until now. A Lead becomes a real
+    Contact (and optionally a Company + Deal) only through
+    CRMHandler.convert_lead, never by editing it into one; the
+    converted_*_id columns record what conversion actually created, for
+    an audit trail back from the lead."""
+    __tablename__ = "leads"
+
+    lead_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.workspace_id"), nullable=False)
+    first_name = Column(String, nullable=False)
+    last_name = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    company_name = Column(String, nullable=True)
+    job_title = Column(String, nullable=True)
+    source = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="new")  # new | contacted | qualified | unqualified | converted
+    notes = Column(Text, nullable=True)
+    tags = Column(JSONB, nullable=True)
+    properties = Column(JSONB, nullable=True)
+    converted_at = Column(DateTime, nullable=True)
+    converted_contact_id = Column(UUID(as_uuid=True), ForeignKey("contacts.contact_id"), nullable=True)
+    converted_company_id = Column(UUID(as_uuid=True), ForeignKey("companies.company_id"), nullable=True)
+    converted_deal_id = Column(UUID(as_uuid=True), ForeignKey("deals.deal_id"), nullable=True)
+    is_deleted = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+
+    workspace = relationship("Workspace")
+
+
+class LeadActivity(Base):
+    __tablename__ = "lead_activities"
+
+    activity_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.workspace_id"), nullable=False)
+    lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.lead_id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False)
+    type = Column(String, nullable=False)  # email, call, meeting, note
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    scheduled_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    status = Column(String, nullable=False, default="pending")
+    properties = Column(JSONB, nullable=True)
+    is_deleted = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+
+    lead = relationship("Lead")
     user = relationship("User")

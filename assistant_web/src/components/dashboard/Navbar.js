@@ -48,7 +48,9 @@ import {
   FiX,
   FiList,
   FiBell,
-  FiBox
+  FiBox,
+  FiBookOpen,
+  FiDollarSign
 } from 'react-icons/fi';
 import {
   MdOutlineDashboard,
@@ -66,8 +68,8 @@ import { fetchModules } from "../../slices/modules";
 // Plug-and-play modules -- a module only shows up here once it's both
 // registered on the backend AND has a known frontend route. Adding a new
 // module's nav entry means adding one line to each of these two maps.
-const MODULE_ICONS = { box: FiBox, users: FiUsers, school: MdSchool };
-const MODULE_ROUTES = { inventory: "/inventory", hr: "/hr", school_erp: "/school-erp" };
+const MODULE_ICONS = { box: FiBox, users: FiUsers, school: MdSchool, 'book-open': FiBookOpen, receipt: FiDollarSign };
+const MODULE_ROUTES = { inventory: "/inventory", hr: "/hr", school_erp: "/school-erp", library: "/library", billing: "/billing" };
 
 const Navbar = ({ isCollapsed, onToggle }) => {
   const router = useRouter();

@@ -137,4 +137,30 @@ export const deleteDealActivity = async (workspaceId, dealId, activityId) => {
         `/api/v1/workspaces/${workspaceId}/crm/deals/${dealId}/activities/${activityId}`
     );
     return response.data;
+};
+
+// Lead APIs
+export const getLeads = async (workspaceId) => {
+    const response = await http.get(`/api/v1/workspaces/${workspaceId}/crm/leads`);
+    return response.data;
+};
+
+export const createLead = async (workspaceId, leadData) => {
+    const response = await http.post(`/api/v1/workspaces/${workspaceId}/crm/leads`, leadData);
+    return response.data;
+};
+
+export const updateLead = async (workspaceId, leadId, leadData) => {
+    const response = await http.put(`/api/v1/workspaces/${workspaceId}/crm/leads/${leadId}`, leadData);
+    return response.data;
+};
+
+export const deleteLead = async (workspaceId, leadId) => {
+    const response = await http.delete(`/api/v1/workspaces/${workspaceId}/crm/leads/${leadId}`);
+    return response.data;
+};
+
+export const convertLead = async (workspaceId, leadId, conversionData) => {
+    const response = await http.post(`/api/v1/workspaces/${workspaceId}/crm/leads/${leadId}/convert`, conversionData);
+    return response.data;
 }; 

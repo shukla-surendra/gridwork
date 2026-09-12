@@ -114,10 +114,11 @@ const DealsPanel = () => {
 
     const filteredDeals = deals.filter((deal) => {
         const searchLower = searchQuery.toLowerCase();
+        const contactName = deal.contact ? `${deal.contact.first_name} ${deal.contact.last_name}` : '';
         return (
-            (deal.name?.toLowerCase() || '').includes(searchLower) ||
-            (deal.company?.toLowerCase() || '').includes(searchLower) ||
-            (deal.contact_name?.toLowerCase() || '').includes(searchLower)
+            (deal.title?.toLowerCase() || '').includes(searchLower) ||
+            (deal.contact?.company?.toLowerCase() || '').includes(searchLower) ||
+            contactName.toLowerCase().includes(searchLower)
         );
     });
 
@@ -293,6 +294,7 @@ const DealsPanel = () => {
                         isOpen={isViewOpen}
                         onClose={onViewClose}
                         deal={selectedDeal}
+                        workspaceId={workspaceId}
                     />
                 </>
             )}

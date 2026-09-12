@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 from modules.access import require_module_enabled
 from .handlers import CRMHandler
@@ -8,11 +8,14 @@ from .commands import (
     CompanyCreate, CompanyUpdate,
     ContactCreate, ContactUpdate, DealCreate, DealUpdate,
     ContactActivityCreate, ContactActivityUpdate,
-    DealActivityCreate, DealActivityUpdate
+    DealActivityCreate, DealActivityUpdate,
+    LeadCreate, LeadUpdate, LeadConvertCommand,
+    LeadActivityCreate, LeadActivityUpdate,
 )
 from .dto import (
     CompanyResponse, ContactResponse, DealResponse,
     ContactActivityResponse, DealActivityResponse,
+    LeadResponse, LeadActivityResponse, LeadConversionResult,
 )
 
 MODULE_KEY = "crm"
@@ -26,6 +29,9 @@ gate = require_module_enabled(MODULE_KEY, default_enabled=True)
 # Company routes
 @router.post("/companies", response_model=CompanyResponse)
 def create_company(workspace_id: str, company: CompanyCreate, user: dict = Depends(gate)):
+    # Always the path's workspace_id, never whatever the body claims --
+    # see CompanyCreate.workspace_id in commands.py for why.
+    company.workspace_id = workspace_id
     handler = CRMHandler()
     return handler.create_company(company)
 
@@ -57,6 +63,10 @@ def delete_company(workspace_id: str, company_id: UUID, user: dict = Depends(gat
 # Contact routes
 @router.post("/contacts", response_model=ContactResponse)
 def create_contact(workspace_id: str, contact: ContactCreate, user: dict = Depends(gate)):
+    # Always the path's workspace_id -- this used to be a required field
+    # the client never sent (contactsSlice.js's addContact), 422ing every
+    # real "Create Contact"; see ContactCreate.workspace_id in commands.py.
+    contact.workspace_id = workspace_id
     handler = CRMHandler()
     return handler.create_contact(contact)
 
@@ -83,6 +93,10 @@ def delete_contact(workspace_id: str,contact_id: UUID, user: dict = Depends(gate
 # Deal routes
 @router.post("/deals", response_model=DealResponse)
 def create_deal(workspace_id: str, deal: DealCreate, user: dict = Depends(gate)):
+    # Always the path's workspace_id -- this used to be a required field
+    # the client never sent (dealsSlice.js's addDeal), 422ing every real
+    # "Create Deal"; see DealCreate.workspace_id in commands.py.
+    deal.workspace_id = workspace_id
     handler = CRMHandler()
     return handler.create_deal(deal)
 
@@ -120,7 +134,9 @@ def create_contact_activity(
     user: dict = Depends(gate)
 ):
     handler = CRMHandler()
+    activity.workspace_id = workspace_id
     activity.contact_id = contact_id
+    activity.user_id = user.get("user_id")
     return handler.create_contact_activity(activity)
 
 @router.get("/contacts/{contact_id}/activities", response_model=List[ContactActivityResponse])
@@ -149,7 +165,9 @@ def create_deal_activity(
     user: dict = Depends(gate)
 ):
     handler = CRMHandler()
+    activity.workspace_id = workspace_id
     activity.deal_id = deal_id
+    activity.user_id = user.get("user_id")
     return handler.create_deal_activity(activity)
 
 @router.get("/deals/{deal_id}/activities", response_model=List[DealActivityResponse])
@@ -169,5 +187,69 @@ def update_deal_activity(
 def delete_deal_activity(workspace_id: str, deal_id: UUID, activity_id: UUID, user: dict = Depends(gate)):
     handler = CRMHandler()
     return handler.delete_deal_activity(activity_id)
+
+# Lead routes
+@router.post("/leads", response_model=LeadResponse)
+def create_lead(workspace_id: str, lead: LeadCreate, user: dict = Depends(gate)):
+    lead.workspace_id = workspace_id
+    handler = CRMHandler()
+    return handler.create_lead(lead)
+
+@router.get("/leads", response_model=List[LeadResponse])
+def get_workspace_leads(workspace_id: str, status_filter: Optional[str] = None, user: dict = Depends(gate)):
+    handler = CRMHandler()
+    return handler.get_workspace_leads(workspace_id, status_filter)
+
+@router.get("/leads/{lead_id}", response_model=LeadResponse)
+def get_lead(workspace_id: str, lead_id: UUID, user: dict = Depends(gate)):
+    handler = CRMHandler()
+    return handler.get_lead(lead_id, workspace_id)
+
+@router.put("/leads/{lead_id}", response_model=LeadResponse)
+def update_lead(workspace_id: str, lead_id: UUID, lead: LeadUpdate, user: dict = Depends(gate)):
+    handler = CRMHandler()
+    return handler.update_lead(lead_id, workspace_id, lead)
+
+@router.delete("/leads/{lead_id}")
+def delete_lead(workspace_id: str, lead_id: UUID, user: dict = Depends(gate)):
+    handler = CRMHandler()
+    return handler.delete_lead(lead_id, workspace_id)
+
+@router.post("/leads/{lead_id}/convert", response_model=LeadConversionResult)
+def convert_lead(workspace_id: str, lead_id: UUID, command: LeadConvertCommand, user: dict = Depends(gate)):
+    handler = CRMHandler()
+    return handler.convert_lead(lead_id, workspace_id, command)
+
+# Lead activity routes
+@router.post("/leads/{lead_id}/activities", response_model=LeadActivityResponse)
+def create_lead_activity(
+    workspace_id: str,
+    lead_id: UUID,
+    activity: LeadActivityCreate,
+    user: dict = Depends(gate)
+):
+    handler = CRMHandler()
+    activity.workspace_id = workspace_id
+    activity.lead_id = lead_id
+    activity.user_id = user.get("user_id")
+    return handler.create_lead_activity(activity)
+
+@router.get("/leads/{lead_id}/activities", response_model=List[LeadActivityResponse])
+def get_lead_activities(workspace_id: str, lead_id: UUID, user: dict = Depends(gate)):
+    handler = CRMHandler()
+    return handler.get_lead_activities(lead_id)
+
+@router.put("/leads/{lead_id}/activities/{activity_id}", response_model=LeadActivityResponse)
+def update_lead_activity(
+    workspace_id: str, lead_id: UUID, activity_id: UUID,
+    activity: LeadActivityUpdate, user: dict = Depends(gate)
+):
+    handler = CRMHandler()
+    return handler.update_lead_activity(activity_id, activity)
+
+@router.delete("/leads/{lead_id}/activities/{activity_id}")
+def delete_lead_activity(workspace_id: str, lead_id: UUID, activity_id: UUID, user: dict = Depends(gate)):
+    handler = CRMHandler()
+    return handler.delete_lead_activity(activity_id)
 
 crm_router = router

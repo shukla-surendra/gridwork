@@ -23,10 +23,12 @@ import {
 import { fetchContacts } from '../../slices/crm/contactsSlice';
 import { fetchDeals } from '../../slices/crm/dealsSlice';
 import { fetchCompanies } from '../../slices/crm/companiesSlice';
+import { fetchLeads } from '../../slices/crm/leadsSlice';
 import ActivitiesPanel from '../../components/crm/ActivitiesPanel';
 import ContactsPanel from '../../components/crm/ContactsPanel';
 import DealsPanel from '../../components/crm/DealsPanel';
 import CompaniesPanel from '../../components/crm/CompaniesPanel';
+import LeadsPanel from '../../components/crm/LeadsPanel';
 import { useRouter } from 'next/router';
 import { selectWorkspace, fetchWorkspaces } from '../../slices/workspaces';
 import config from '../../utils/config';
@@ -90,6 +92,7 @@ const CRMPage = () => {
             dispatch(fetchContacts(selectedWorkspace.workspace_id));
             dispatch(fetchDeals(selectedWorkspace.workspace_id));
             dispatch(fetchCompanies(selectedWorkspace.workspace_id));
+            dispatch(fetchLeads(selectedWorkspace.workspace_id));
         }
     }, [dispatch, selectedWorkspace]);
 
@@ -164,12 +167,16 @@ const CRMPage = () => {
                     <Heading size="lg" mb={4}>CRM</Heading>
                     <Tabs variant="enclosed">
                         <TabList>
+                            <Tab>Leads</Tab>
                             <Tab>Contacts</Tab>
                             <Tab>Companies</Tab>
                             <Tab>Deals</Tab>
                             <Tab>Activities</Tab>
                         </TabList>
                         <TabPanels>
+                            <TabPanel>
+                                <LeadsPanel />
+                            </TabPanel>
                             <TabPanel>
                                 <ContactsPanel />
                             </TabPanel>

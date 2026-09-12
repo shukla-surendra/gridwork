@@ -24,8 +24,13 @@ class MemberRoleUpdate(BaseModel):
     role: str
 
 @router.post("/", response_model=WorkspaceDto, status_code=status.HTTP_201_CREATED)
-async def create_workspace(command: WorkspaceCreateCommand):
+async def create_workspace(command: WorkspaceCreateCommand, user: dict = Depends(get_auth_details)):
     """Create a new workspace"""
+    # Never trust a client-supplied owner_id -- this route used to accept
+    # it as-is with no auth dependency at all, letting any caller create
+    # a workspace "owned" by an arbitrary user_id. The authenticated
+    # caller is always the owner.
+    command.owner_id = user.get("user_id")
     try:
         workspace = WorkspaceHandler().create_workspace(command)
         return WorkspaceDtoMapper.map_to_workspace_dto(workspace)

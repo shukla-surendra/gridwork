@@ -8,14 +8,23 @@ class WorkspaceCreateCommand(BaseModel):
     name: str
     description: Optional[str] = None
     is_default: Optional[bool] = False
-    owner_id: str
+    # Optional so a client just sending {name, description} doesn't 422
+    # before the controller gets a chance to fill this in from the auth
+    # token -- a client-supplied owner_id must never be trusted directly
+    # (see controllers/workspace_controller.py's create_workspace).
+    owner_id: Optional[str] = None
     members: List[str] = []
     settings: Optional[dict] = None
     properties: Optional[dict] = None
 
 
 class WorkspaceUpdateCommand(BaseModel):
-    workspace_id: str
+    # Optional, and in fact never read (the handler uses the workspace_id
+    # from the URL path instead -- see update_workspace in
+    # controllers/workspace_controller.py) -- this being a *required*
+    # field meant every real caller, which only ever sends {name,
+    # description, ...}, 422'd before reaching the handler at all.
+    workspace_id: Optional[str] = None
     name: Optional[str] = None
     description: Optional[str] = None
     members: Optional[List[str]] = None

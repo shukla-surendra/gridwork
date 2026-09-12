@@ -1,17 +1,22 @@
+import datetime
 from adapters.orm.models.database import SessionLocal
 from fastapi import HTTPException
 from typing import List
 from uuid import UUID
 import logging
 
-from .models import Company, Contact, Deal, ContactActivity, DealActivity
+from .models import Company, Contact, Deal, ContactActivity, DealActivity, Lead, LeadActivity
 from .commands import (
     CompanyCreate, CompanyUpdate,
     ContactCreate, ContactUpdate, DealCreate, DealUpdate,
     ContactActivityCreate, DealActivityCreate,
-    ContactActivityUpdate, DealActivityUpdate
+    ContactActivityUpdate, DealActivityUpdate,
+    LeadCreate, LeadUpdate, LeadConvertCommand,
+    LeadActivityCreate, LeadActivityUpdate,
 )
 from sqlalchemy.orm import joinedload
+
+LEAD_STATUSES = ("new", "contacted", "qualified", "unqualified", "converted")
 
 logger = logging.getLogger(__name__)
 
@@ -317,3 +322,203 @@ class CRMHandler:
             self.db.rollback()
             logger.error(f"Error deleting deal activity: {str(e)}")
             raise HTTPException(status_code=500, detail="Failed to delete deal activity")
+
+    # -- Leads ----------------------------------------------------------------
+
+    def create_lead(self, lead: LeadCreate) -> Lead:
+        try:
+            db_lead = Lead(**lead.model_dump())
+            self.db.add(db_lead)
+            self.db.commit()
+            self.db.refresh(db_lead)
+            return db_lead
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error creating lead: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to create lead")
+
+    def get_lead(self, lead_id: UUID, workspace_id: UUID) -> Lead:
+        lead = self.db.query(Lead).filter(
+            Lead.lead_id == lead_id,
+            Lead.workspace_id == workspace_id,
+            Lead.is_deleted == False
+        ).first()
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        return lead
+
+    def get_workspace_leads(self, workspace_id: UUID, status_filter: str = None) -> List[Lead]:
+        query = self.db.query(Lead).filter(
+            Lead.workspace_id == workspace_id,
+            Lead.is_deleted == False
+        )
+        if status_filter:
+            query = query.filter(Lead.status == status_filter)
+        return query.order_by(Lead.created_at.desc()).all()
+
+    def update_lead(self, lead_id: UUID, workspace_id: UUID, lead: LeadUpdate) -> Lead:
+        db_lead = self.get_lead(lead_id, workspace_id)
+        if db_lead.status == "converted":
+            raise HTTPException(status_code=400, detail="A converted lead can't be edited")
+        try:
+            for key, value in lead.model_dump(exclude_unset=True).items():
+                setattr(db_lead, key, value)
+            self.db.commit()
+            self.db.refresh(db_lead)
+            return db_lead
+        except HTTPException:
+            raise
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating lead: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to update lead")
+
+    def delete_lead(self, lead_id: UUID, workspace_id: UUID) -> bool:
+        db_lead = self.get_lead(lead_id, workspace_id)
+        try:
+            db_lead.is_deleted = True
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error deleting lead: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to delete lead")
+
+    def convert_lead(self, lead_id: UUID, workspace_id: UUID, command: LeadConvertCommand) -> dict:
+        """The one action that turns a Lead into the real thing: always a
+        Contact, optionally a Company (new or an existing one to link)
+        and a Deal. Everything happens in one transaction -- either the
+        whole conversion lands, or none of it does; a lead half-converted
+        by a mid-way failure would be worse than the 500 this raises
+        instead."""
+        db_lead = self.get_lead(lead_id, workspace_id)
+        if db_lead.status == "converted":
+            raise HTTPException(status_code=400, detail="Lead is already converted")
+        try:
+            company = None
+            company_id = None
+            if command.company_id:
+                company = self.db.query(Company).filter(
+                    Company.company_id == command.company_id,
+                    Company.workspace_id == workspace_id,
+                    Company.is_deleted == False
+                ).first()
+                if not company:
+                    raise HTTPException(status_code=404, detail="Company not found")
+                company_id = company.company_id
+            elif command.create_company and db_lead.company_name:
+                company = Company(workspace_id=workspace_id, name=db_lead.company_name)
+                self.db.add(company)
+                self.db.flush()  # assign company.company_id without committing yet
+                company_id = company.company_id
+
+            contact = Contact(
+                workspace_id=workspace_id,
+                first_name=db_lead.first_name,
+                last_name=db_lead.last_name,
+                email=db_lead.email,
+                phone=db_lead.phone,
+                company=db_lead.company_name,
+                company_id=company_id,
+                job_title=db_lead.job_title,
+                source=db_lead.source or "lead_conversion",
+                notes=db_lead.notes,
+            )
+            self.db.add(contact)
+            self.db.flush()
+
+            deal = None
+            if command.create_deal:
+                deal = Deal(
+                    workspace_id=workspace_id,
+                    contact_id=contact.contact_id,
+                    title=command.deal_title or f"{db_lead.first_name} {db_lead.last_name} Deal",
+                    value=command.deal_value,
+                    currency=command.deal_currency,
+                    stage=command.deal_stage,
+                    status="active",
+                )
+                self.db.add(deal)
+                self.db.flush()
+
+            db_lead.status = "converted"
+            db_lead.converted_at = datetime.datetime.now(datetime.UTC)
+            db_lead.converted_contact_id = contact.contact_id
+            db_lead.converted_company_id = company_id
+            db_lead.converted_deal_id = deal.deal_id if deal else None
+
+            self.db.commit()
+            self.db.refresh(db_lead)
+            self.db.refresh(contact)
+            if company:
+                self.db.refresh(company)
+            if deal:
+                self.db.refresh(deal)
+            # Force these while self.db is still open -- ContactResponse
+            # has a company_ref field and DealResponse a contact field
+            # (itself carrying company_ref), same lazy-load-after-close
+            # trap create_deal's comment above explains in full.
+            _ = contact.company_ref
+            if deal:
+                _ = deal.contact.company_ref
+            return {"lead": db_lead, "contact": contact, "company": company, "deal": deal}
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error converting lead: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to convert lead")
+
+    # -- Lead activities ----------------------------------------------------
+
+    def create_lead_activity(self, activity: LeadActivityCreate) -> LeadActivity:
+        try:
+            db_activity = LeadActivity(**activity.model_dump())
+            self.db.add(db_activity)
+            self.db.commit()
+            self.db.refresh(db_activity)
+            return db_activity
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error creating lead activity: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to create lead activity")
+
+    def get_lead_activities(self, lead_id: UUID) -> List[LeadActivity]:
+        return self.db.query(LeadActivity).filter(
+            LeadActivity.lead_id == lead_id,
+            LeadActivity.is_deleted == False
+        ).order_by(LeadActivity.created_at.desc()).all()
+
+    def get_lead_activity(self, activity_id: UUID) -> LeadActivity:
+        activity = self.db.query(LeadActivity).filter(
+            LeadActivity.activity_id == activity_id,
+            LeadActivity.is_deleted == False
+        ).first()
+        if not activity:
+            raise HTTPException(status_code=404, detail="Activity not found")
+        return activity
+
+    def update_lead_activity(self, activity_id: UUID, activity: LeadActivityUpdate) -> LeadActivity:
+        db_activity = self.get_lead_activity(activity_id)
+        try:
+            for key, value in activity.model_dump(exclude_unset=True).items():
+                setattr(db_activity, key, value)
+            self.db.commit()
+            self.db.refresh(db_activity)
+            return db_activity
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating lead activity: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to update lead activity")
+
+    def delete_lead_activity(self, activity_id: UUID) -> bool:
+        db_activity = self.get_lead_activity(activity_id)
+        try:
+            db_activity.is_deleted = True
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error deleting lead activity: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to delete lead activity")

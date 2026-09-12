@@ -16,7 +16,11 @@ class CompanyBase(BaseModel):
 
 
 class CompanyCreate(CompanyBase):
-    workspace_id: UUID
+    # Optional -- the controller always overwrites this from the URL path
+    # (see create_company in controller.py), never trusting whatever a
+    # client sends here. A member of workspace A must not be able to
+    # write into workspace B just by naming its ID in the body.
+    workspace_id: Optional[UUID] = None
 
 
 class CompanyUpdate(BaseModel):
@@ -50,7 +54,12 @@ class ContactBase(BaseModel):
 
 
 class ContactCreate(ContactBase):
-    workspace_id: UUID
+    # Optional and controller-assigned from the URL path, same reasoning
+    # as CompanyCreate.workspace_id above. This was previously required
+    # with no default and the controller never filled it in -- since the
+    # real frontend (contactsSlice.js's addContact) never sends it either,
+    # every "Create Contact" in the app was 422ing outright.
+    workspace_id: Optional[UUID] = None
 
 
 class ContactUpdate(BaseModel):
@@ -85,10 +94,21 @@ class DealBase(BaseModel):
     tags: Optional[List[str]] = None
     status: str = "active"
     properties: Optional[Dict[str, Any]] = None
+    # Soft reference to modules.billing.models.Quote.quote_id -- no FK
+    # constraint, deliberately: Billing is a separate, independently
+    # toggleable module, and CRM must keep working standalone whether or
+    # not it's enabled. Resolved by the frontend (GET
+    # /billing/quotes/{id}) when it wants to show quote status on a deal,
+    # never joined here.
+    quote_id: Optional[UUID] = None
 
 
 class DealCreate(DealBase):
-    workspace_id: UUID
+    # Optional and controller-assigned from the URL path, same reasoning
+    # as ContactCreate.workspace_id above -- this was required with no
+    # default and the frontend (dealsSlice.js's addDeal) never sends it,
+    # so every "Create Deal" was 422ing outright.
+    workspace_id: Optional[UUID] = None
     contact_id: UUID
 
 
@@ -107,6 +127,7 @@ class DealUpdate(BaseModel):
     tags: Optional[List[str]] = None
     status: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
+    quote_id: Optional[UUID] = None
 
 
 class ContactActivityBase(BaseModel):
@@ -120,9 +141,11 @@ class ContactActivityBase(BaseModel):
 
 
 class ContactActivityCreate(ContactActivityBase):
-    workspace_id: UUID
-    contact_id: UUID
-    user_id: UUID
+    # All three set by the controller (path + auth token), not trusted
+    # from the client -- same reasoning as ContactCreate.workspace_id.
+    workspace_id: Optional[UUID] = None
+    contact_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
 
 
 class ContactActivityUpdate(BaseModel):
@@ -145,9 +168,11 @@ class DealActivityBase(BaseModel):
 
 
 class DealActivityCreate(DealActivityBase):
-    workspace_id: UUID
-    deal_id: UUID
-    user_id: UUID
+    # All three set by the controller (path + auth token), not trusted
+    # from the client -- same reasoning as ContactActivityCreate above.
+    workspace_id: Optional[UUID] = None
+    deal_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
 
 
 class DealActivityUpdate(BaseModel):
@@ -156,4 +181,83 @@ class DealActivityUpdate(BaseModel):
     description: Optional[str] = None
     old_stage: Optional[str] = None
     new_stage: Optional[str] = None
+    properties: Optional[Dict[str, Any]] = None
+
+
+# -- Leads --------------------------------------------------------------
+#
+# The pre-qualification stage Zoho/Odoo both put ahead of Contacts/Deals --
+# a Lead isn't a real Contact yet, and "Convert" is the one action that
+# turns it into one (see LeadConvertCommand and CRMHandler.convert_lead).
+
+class LeadBase(BaseModel):
+    first_name: str
+    last_name: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    company_name: Optional[str] = None
+    job_title: Optional[str] = None
+    source: Optional[str] = None
+    status: str = "new"  # new | contacted | qualified | unqualified | converted
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = None
+    properties: Optional[Dict[str, Any]] = None
+
+
+class LeadCreate(LeadBase):
+    # Optional and controller-assigned from the URL path, same reasoning
+    # as ContactCreate.workspace_id.
+    workspace_id: Optional[UUID] = None
+
+
+class LeadUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    company_name: Optional[str] = None
+    job_title: Optional[str] = None
+    source: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = None
+    properties: Optional[Dict[str, Any]] = None
+
+
+class LeadConvertCommand(BaseModel):
+    """What to create alongside the Contact that conversion always makes.
+    Mirrors Zoho's "Convert Lead" dialog: Company and Deal are each
+    optional, and an existing Company can be linked instead of minting a
+    new one (e.g. a second lead from a company already in the CRM)."""
+    create_company: bool = True  # only applies if lead.company_name is set and company_id isn't given
+    company_id: Optional[UUID] = None  # link to an existing company instead of creating one
+    create_deal: bool = True
+    deal_title: Optional[str] = None  # defaults to "<Lead name> Deal" in the handler
+    deal_value: Optional[int] = None
+    deal_currency: str = "USD"
+    deal_stage: str = "new"
+
+
+class LeadActivityCreate(BaseModel):
+    type: str
+    title: str
+    description: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    status: str = "pending"
+    properties: Optional[Dict[str, Any]] = None
+    # All three set by the controller (path + auth token), not trusted
+    # from the client -- same reasoning as ContactActivityCreate.
+    workspace_id: Optional[UUID] = None
+    lead_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
+
+
+class LeadActivityUpdate(BaseModel):
+    type: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    status: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None

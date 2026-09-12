@@ -8,6 +8,7 @@ import contactsReducer from './slices/crm/contactsSlice';
 import dealsReducer from './slices/crm/dealsSlice';
 import companiesReducer from './slices/crm/companiesSlice';
 import activitiesReducer from './slices/crm/activitiesSlice';
+import leadsReducer from './slices/crm/leadsSlice';
 import chatReducer from './slices/chatSlice';
 import boardsReducer from './slices/boards';
 import pagesReducer from './slices/pages';
@@ -32,6 +33,7 @@ const store = configureStore({
     deals: dealsReducer,
     companies: companiesReducer,
     activities: activitiesReducer,
+    leads: leadsReducer,
     chat: chatReducer,
     boards: boardsReducer,
     pages: pagesReducer,

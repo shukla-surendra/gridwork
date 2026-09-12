@@ -160,9 +160,39 @@ what "real" coverage looks like, not just does-it-200 checks).
 
 ## What NOT to touch
 
-Tasks, Boards, Workspaces, and Auth are core -- not modules, not
-toggleable, and not something a module should assume it can change the
-behavior of. A module can *reference* a task (Inventory doesn't, but a
-future Procurement module linking a purchase order to a task would) by
-storing a `task_id` and querying the real `Task` model, the same way any
-other handler in this app does.
+Workspaces and Auth are core -- not modules, not toggleable, and not
+something a module should assume it can change the behavior of.
+
+Tasks and Boards are also core data, but they do have a toggle in
+Settings > Modules -- see "Nav-only modules" below for why that's a
+different thing from a real module gate. A module can *reference* a task
+(Inventory doesn't, but a future Procurement module linking a purchase
+order to a task would) by storing a `task_id` and querying the real
+`Task` model, the same way any other handler in this app does -- that
+reference has to keep working regardless of whether Tasks' nav-only
+toggle is on or off for the workspace.
+
+## Nav-only modules
+
+`Tasks`, `Boards`, `Notes`, `Calendar`, and `Time Blocking` are registered
+in `modules/registry.py`'s `NAV_ONLY_MODULES`, not `ADOPTED_MODULES`, and
+their routes are **not** wrapped in `require_module_enabled`. This is
+deliberate, not an oversight: Tasks and Boards are this app's
+foundational data model -- Notes and Time Blocking are just Tasks with a
+different `task_type`, board cards are Tasks, and Comments/Epics/
+Sprints/Task Links all attach to a Task or Board. Hard-gating the API the
+way a real module is gated would cascade: disabling "Tasks" for a
+workspace would break Notes, Time Blocking, Comments, Epics, Sprints, and
+Task Links all at once, for a "declutter my sidebar" toggle that was
+never meant to be that destructive.
+
+Instead, the toggle for these five only controls whether the frontend
+shows the nav entry and renders the page --
+`assistant_web_next/src/components/dashboard/FeatureDisabledPage.js` is
+what a disabled page renders instead of its real content, and
+`assistant_web_next/src/slices/modules.js` (`selectIsModuleEnabled`) is
+what each page/nav item checks. The API itself stays reachable either
+way. If you're building something new that's genuinely optional, use a
+real module (`ADOPTED_MODULES` or a packaged `modules/<key>/`) with
+`require_module_enabled`, not this pattern -- nav-only is specifically
+for the handful of things that are too foundational to actually gate.

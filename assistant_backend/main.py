@@ -21,25 +21,17 @@ from docs.api_docs import custom_openapi
 from middleware.rate_limit import RateLimitMiddleware
 from adapters.orm.models.database import engine, get_db
 from controllers import (
-    tasks_router,
-    board_router,
-    timeblock_router,
     settings_router,
-    comment_router,
-    activity_router,
     public_router,
-    assistant_router,
     workspace_router,
     users_router,
     queue_router,
-    epic_router,
-    sprint_router,
-    task_link_router,
 )
 # Not part of the controllers/__init__.py barrel -- see that file for why
 # (module_controller -> modules.registry -> controllers barrel would be a
-# circular import). page_router/database_router/etc. are likewise not
-# imported here: they're mounted once each, below, via ALL_MODULES.
+# circular import). page_router/database_router/activity_router/
+# tasks_router/board_router/etc. are likewise not imported here: they're
+# mounted once each, below, via ALL_MODULES.
 from controllers.module_controller import module_router
 from modules.registry import ALL_MODULES
 from workers.queue_consumer import run_consumer
@@ -79,27 +71,23 @@ try:
     app.add_middleware(RateLimitMiddleware)
 
     # Include routers
-    app.include_router(tasks_router)
-    app.include_router(board_router)
-    app.include_router(timeblock_router)
     app.include_router(settings_router)
-    app.include_router(comment_router)
-    app.include_router(activity_router)
     app.include_router(public_router)
-    app.include_router(assistant_router)
     app.include_router(workspace_router)
     app.include_router(users_router)
     app.include_router(queue_router)
-    app.include_router(epic_router)
-    app.include_router(sprint_router)
-    app.include_router(task_link_router)
     app.include_router(module_router)
 
-    # Plug-and-play modules -- both brand-new ones (Inventory) and
-    # pre-existing features adopted into the registry (CRM, Wiki,
-    # Database, Chat, Reports, Reminders, Notifications, Templates).
-    # Each entry in ALL_MODULES brings its own router; adding a new
-    # module means editing modules/registry.py, not this file.
+    # Plug-and-play modules -- brand-new ones (Inventory), pre-existing
+    # features hard-gated via require_module_enabled after being adopted
+    # into the registry (CRM, Wiki, Database, Chat, Reports, Reminders,
+    # Notifications, Templates, Activity, Comments, Epics, Sprints, Task
+    # Links, AI Assistant), and "nav-only" modules whose API is
+    # deliberately left ungated because they're core/foundational (Tasks,
+    # Boards, Notes, Calendar, Time Blocking -- see NAV_ONLY_MODULES in
+    # modules/registry.py for why). Each entry in ALL_MODULES brings its
+    # own router; adding a new module means editing modules/registry.py,
+    # not this file.
     for module in ALL_MODULES:
         app.include_router(module.router)
 

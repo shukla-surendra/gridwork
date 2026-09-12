@@ -86,7 +86,7 @@ services:
   # App frontend. That app's source is kept at ../archive/assistant_web for
   # reference during the cutover period; it's no longer built here.
   frontend:
-    build: ./assistant_web_next
+    build: ./assistant_web
     ports:
       - "3000:80"
     depends_on:

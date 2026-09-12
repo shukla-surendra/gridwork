@@ -6,12 +6,16 @@ from commands.activity_cmd import ActivityCommand, ActivityUpdateCommand, Activi
 from adapters.orm.models.pg_models import Activity
 from dto.activity_dto import ActivityDto
 from dto.activity_dto import ActivityDtoMapper
-from authorization.auth import get_auth_details
+from modules.access import require_module_enabled
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/activities", tags=["activities"])
 
+# Already a live, always-on feature before the module registry existed --
+# default_enabled=True so no existing workspace loses it silently.
+gate = require_module_enabled("activity", default_enabled=True)
+
 @router.post("/", response_model=ActivityDto, status_code=status.HTTP_201_CREATED)
-async def create_activity(command: ActivityCommand, workspace_id: str, user: dict = Depends(get_auth_details)):
+async def create_activity(command: ActivityCommand, workspace_id: str, user: dict = Depends(gate)):
     handler = ActivityHandler()
     command.workspace_id = workspace_id
     command.user_id = user.get("user_id")
@@ -22,7 +26,7 @@ async def create_activity(command: ActivityCommand, workspace_id: str, user: dic
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{activity_id}", response_model=ActivityDto)
-async def update_activity(activity_id: str, command: ActivityUpdateCommand, workspace_id: str, user: dict = Depends(get_auth_details)):
+async def update_activity(activity_id: str, command: ActivityUpdateCommand, workspace_id: str, user: dict = Depends(gate)):
     handler = ActivityHandler()
     # ActivityUpdateCommand has no workspace_id/user_id fields (and
     # update_activity doesn't use them) -- assigning them here raised
@@ -35,7 +39,7 @@ async def update_activity(activity_id: str, command: ActivityUpdateCommand, work
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_activity(activity_id: str, workspace_id: str, user: dict = Depends(get_auth_details)):
+async def delete_activity(activity_id: str, workspace_id: str, user: dict = Depends(gate)):
     handler = ActivityHandler()
     try:
         command = ActivityDeleteCommand(activity_id=activity_id, workspace_id=workspace_id, user_id=user.get("user_id"))
@@ -44,7 +48,7 @@ async def delete_activity(activity_id: str, workspace_id: str, user: dict = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{activity_id}", response_model=ActivityDto)
-async def get_activity(activity_id: str, workspace_id: str, user: dict = Depends(get_auth_details)):
+async def get_activity(activity_id: str, workspace_id: str, user: dict = Depends(gate)):
     handler = ActivityHandler()
     try:
         activity = handler.get_activity(activity_id, workspace_id)
@@ -57,7 +61,7 @@ async def list_activities(
     workspace_id: str,
     entity_type: Optional[str] = None,
     limit: int = 50,
-    user: dict = Depends(get_auth_details),
+    user: dict = Depends(gate),
 ):
     handler = ActivityHandler()
     try:

@@ -1,25 +1,36 @@
 import api from './api';
 import Config from '../utils/config';
+import Auth from '../utils/auth';
+
+// These field names must match TaskDto (task_dto.py) exactly -- this used
+// to declare a fictional `id`/`due_date` shape that the backend never
+// returns (the real fields are `task_id`/`due_on`), so every screen
+// reading `.id` off a task got `undefined`: list keys collided and
+// task-detail navigation silently failed to load anything.
+export interface TaskComment {
+    comment_id: string;
+    task_id: string;
+    user_id: string;
+    content: string;
+    created_at: string;
+    updated_at: string;
+    user?: { user_id: string; first_name: string; last_name: string } | null;
+}
 
 export interface Task {
-    id: string;
+    task_id: string;
     title: string;
     description?: string;
     status: 'todo' | 'in_progress' | 'done';
     priority: 'low' | 'medium' | 'high';
-    due_date?: string;
+    due_on?: string;
     workspace_id: string;
     created_at: string;
     updated_at: string;
-    comments?: Comment[];
+    comments?: TaskComment[];
+    story_points?: number;
+    labels?: string[];
     task_type?: 'TASK' | 'NOTE' | 'quick_note' | 'time_block';
-}
-
-interface Comment {
-    id: string;
-    content: string;
-    user: string;
-    created_at: string;
 }
 
 interface CreateTaskData {
@@ -27,7 +38,8 @@ interface CreateTaskData {
     description?: string;
     status?: 'todo' | 'in_progress' | 'done';
     priority?: 'low' | 'medium' | 'high';
-    due_date?: string;
+    due_on?: string;
+    story_points?: number;
     task_type?: 'TASK' | 'NOTE' | 'quick_note' | 'time_block';
     workspace_id?: string;
 }
@@ -37,13 +49,13 @@ interface UpdateTaskData {
     description?: string;
     status?: 'todo' | 'in_progress' | 'done';
     priority?: 'low' | 'medium' | 'high';
-    due_date?: string;
+    due_on?: string;
+    story_points?: number;
     task_type?: 'TASK' | 'NOTE' | 'quick_note' | 'time_block';
 }
 
 interface CreateCommentData {
     content: string;
-    user: string;
 }
 
 class TaskService {
@@ -202,10 +214,22 @@ class TaskService {
         }
     }
 
-    async addComment(taskId: string, data: CreateCommentData): Promise<Comment> {
+    async addComment(taskId: string, data: CreateCommentData): Promise<TaskComment> {
         try {
             const workspaceId = await this.getWorkspaceId();
-            const response = await api.post(`/api/v1/workspaces/${workspaceId}/tasks/${taskId}/comments`, data);
+            // Comments are a top-level workspace resource, not nested under
+            // tasks (comment_controller.py: POST /workspaces/{id}/comments/),
+            // and CommentCommand requires user_id + content + task_id.
+            const profile = await Auth.getProfile();
+            if (!profile?.user_id) {
+                throw new Error('Not authenticated');
+            }
+            const response = await api.post(`/api/v1/workspaces/${workspaceId}/comments/`, {
+                workspace_id: workspaceId,
+                content: data.content,
+                user_id: profile.user_id,
+                task_id: taskId,
+            });
             return response.data;
         } catch (error) {
             console.error('Error adding comment:', error);

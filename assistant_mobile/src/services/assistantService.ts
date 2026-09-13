@@ -1,4 +1,5 @@
 import api from './api';
+import Config from '../utils/config';
 
 export interface AssistantCommand {
   command: string;
@@ -43,7 +44,6 @@ export interface UserSettings {
 
 class AssistantService {
   private static instance: AssistantService;
-  private baseUrl = '/assistant';
 
   private constructor() {}
 
@@ -54,10 +54,24 @@ class AssistantService {
     return AssistantService.instance;
   }
 
+  private async getWorkspaceId(): Promise<string> {
+    const workspace = await Config.getDefaultWorkspace();
+    if (!workspace?.workspace_id) {
+      throw new Error('No workspace selected');
+    }
+    return workspace.workspace_id;
+  }
+
+  // Real route is /api/v1/assistant/command with workspace_id in the body
+  // (assistant_controller.py) -- the old baseUrl ('/assistant') was missing
+  // the /api/v1 prefix, and workspace_id was never sent at all, so every
+  // call 404'd/422'd before reaching the agent.
   async processCommand(command: string): Promise<AssistantResponse> {
     try {
-      const response = await api.post<AssistantResponse>(`${this.baseUrl}/command`, {
+      const workspaceId = await this.getWorkspaceId();
+      const response = await api.post<AssistantResponse>('/api/v1/assistant/command', {
         command,
+        workspace_id: workspaceId,
       });
       return response.data;
     } catch (error) {
@@ -66,6 +80,15 @@ class AssistantService {
     }
   }
 
+  // NOTE: these four settings methods are a known gap. The backend has no
+  // per-category settings endpoints at all -- settings_controller.py
+  // exposes a single per-workspace settings row (POST/GET to create/fetch
+  // it, then PUT /{settings_id}, PUT /{settings_id}/preferences, PUT
+  // /{settings_id}/notifications against that row's ID) with a totally
+  // different shape than UserSettings below. Wiring these up properly means
+  // fetching/caching the settings_id first and reshaping this interface,
+  // which is out of scope for this pass -- left as stubs pointing at
+  // nonexistent routes rather than silently pretending to work.
   async getSettings(): Promise<UserSettings> {
     try {
       const response = await api.get<UserSettings>('/settings');

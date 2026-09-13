@@ -43,7 +43,7 @@ class UserService {
 
     async register(data: RegisterData): Promise<User> {
         try {
-            const response = await api.post<User>('/api/v1/users/register', data);
+            const response = await api.post<User>('/api/v1/users/signup', data);
             return response.data;
         } catch (error) {
             console.error('Error registering user:', error);

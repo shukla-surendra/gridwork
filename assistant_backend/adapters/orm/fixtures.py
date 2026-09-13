@@ -1,20 +1,26 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 from passlib.hash import pbkdf2_sha256
 from sqlalchemy.orm import Session
 from .models.pg_models import (
-    User, UserSettings, Task, Workspace, Board,
+    User, UserSettings, Task, Workspace, Board, Sprint, WorkspaceModule,
     Reminder, Notification, Comment, Tag, Page, Block, Database,
     DatabaseEntry, Template, Activity, Integration,
     Chat, ChatMessage,
     workspace_users, task_tags
 )
-from modules.crm.models import Contact, Deal, ContactActivity, DealActivity
+from modules.crm.models import Contact, Deal, ContactActivity, DealActivity, Company, Lead, LeadActivity
 from modules.hr.models import Employee, LeaveRequest, OnboardingTemplate
 from modules.inventory.models import Warehouse, Product, StockMovement
 from modules.school_erp.models import (
     Teacher, SchoolClass, Student, Attendance,
     FeeStructure, FeePayment, Exam, ExamResult,
+)
+from modules.billing.models import (
+    Customer, Item, BillingSequence, Quote, QuoteLine, Invoice, InvoiceLine, Payment,
+)
+from modules.library.models import (
+    Seat, Shift, Member, Booking, Attendance as LibraryAttendance,
 )
 from constants import TaskStatus, TaskType, TaskPriority, UserStatus, UserRoles, UserType
 
@@ -590,6 +596,42 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     db.execute(task_tags.insert().values(task_id=tasks[2].task_id, tag_id=tags[2].id))  # tasks[2] = "Write onboarding docs"
     db.commit()
 
+    # ---- Sprints (Sprint Board) -----------------------------------------------
+    # Retrofitted onto a few of the Sprint Board cards created above rather
+    # than creating new tasks for them, so the Sprints view and the Kanban
+    # board are showing the same underlying cards, not two disconnected data
+    # sets.
+    sprints = [
+        Sprint(
+            sprint_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            board_id=board.board_id,
+            name="Sprint 12",
+            goal="Ship the CRM activity-routing fix and stabilize CI",
+            status="completed",
+            start_date=now - timedelta(days=21),
+            end_date=now - timedelta(days=7),
+        ),
+        Sprint(
+            sprint_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            board_id=board.board_id,
+            name="Sprint 13",
+            goal="Onboarding polish + dark mode",
+            status="active",
+            start_date=now - timedelta(days=7),
+            end_date=now + timedelta(days=7),
+        ),
+    ]
+    db.add_all(sprints)
+    db.commit()
+
+    tasks[0].sprint_id = sprints[0].sprint_id  # "Fix CRM activities routing"
+    tasks[1].sprint_id = sprints[0].sprint_id  # "Fix flaky CI test on auth middleware"
+    tasks[2].sprint_id = sprints[1].sprint_id  # "Write onboarding docs"
+    tasks[3].sprint_id = sprints[1].sprint_id  # "Add dark mode toggle to settings"
+    db.commit()
+
     # ---- Comments ------------------------------------------------------------
     comments = [
         Comment(
@@ -836,7 +878,32 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     db.add_all(integrations)
     db.commit()
 
-    # ---- CRM: Contacts, Deals, and their activities ---------------------------
+    # ---- CRM: Companies, Contacts, Deals, and their activities -----------------
+    companies = [
+        Company(
+            company_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            name="Northwind Traders",
+            industry="Logistics",
+            website="https://northwindtraders.example.com",
+            size="201-500",
+            phone="+1-555-0190",
+            description="Global logistics and freight forwarding.",
+        ),
+        Company(
+            company_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            name="Globex Corp",
+            industry="Manufacturing",
+            website="https://globex.example.com",
+            size="1001-5000",
+            phone="+1-555-0191",
+            description="Industrial equipment manufacturer.",
+        ),
+    ]
+    db.add_all(companies)
+    db.commit()
+
     contacts = [
         Contact(
             contact_id=uuid.uuid4(),
@@ -846,6 +913,7 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
             email="jordan.lee@example.com",
             phone="+1-555-0100",
             company="Northwind Traders",
+            company_id=companies[0].company_id,
             job_title="VP Engineering",
             tags=["prospect", "enterprise"],
             status="active",
@@ -858,6 +926,7 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
             last_name="Nair",
             email="priya.nair@example.com",
             company="Globex Corp",
+            company_id=companies[1].company_id,
             job_title="Head of Ops",
             tags=["customer"],
             status="active",
@@ -865,6 +934,91 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
         ),
     ]
     db.add_all(contacts)
+    db.commit()
+
+    leads = [
+        Lead(
+            lead_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            first_name="Alex",
+            last_name="Rivera",
+            email="alex.rivera@example.com",
+            phone="+1-555-0210",
+            company_name="Initech",
+            job_title="CTO",
+            source="website",
+            status="new",
+            notes="Downloaded the pricing sheet, hasn't been contacted yet.",
+        ),
+        Lead(
+            lead_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            first_name="Morgan",
+            last_name="Chen",
+            email="morgan.chen@example.com",
+            company_name="Umbrella Retail",
+            job_title="Ops Director",
+            source="referral",
+            status="qualified",
+            notes="Ready for a demo call.",
+        ),
+        Lead(
+            lead_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            first_name="Sam",
+            last_name="Okafor",
+            email="sam.okafor@example.com",
+            company_name="Initrode",
+            job_title="Founder",
+            source="cold_outreach",
+            status="contacted",
+        ),
+        # A converted one, so the Leads view shows every stage of the funnel --
+        # convert_at/converted_contact_id mimic what CRMHandler.convert_lead
+        # would have set, without actually calling it (no Deal/extra Contact
+        # created for this one, since that path is exercised via the API,
+        # not fixtures).
+        Lead(
+            lead_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            first_name="Jordan",
+            last_name="Lee",
+            email="jordan.lee@example.com",
+            company_name="Northwind Traders",
+            job_title="VP Engineering",
+            source="referral",
+            status="converted",
+            converted_at=now - timedelta(days=20),
+            converted_contact_id=contacts[0].contact_id,
+            converted_company_id=companies[0].company_id,
+        ),
+    ]
+    db.add_all(leads)
+    db.commit()
+
+    lead_activities = [
+        LeadActivity(
+            activity_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            lead_id=leads[0].lead_id,
+            user_id=owner.user_id,
+            type="email",
+            title="Sent intro email",
+            status="completed",
+            completed_at=now - timedelta(days=2),
+        ),
+        LeadActivity(
+            activity_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            lead_id=leads[1].lead_id,
+            user_id=teammate.user_id,
+            type="call",
+            title="Discovery call",
+            scheduled_at=now + timedelta(days=1),
+            status="pending",
+        ),
+    ]
+    db.add_all(lead_activities)
     db.commit()
 
     deals = [
@@ -944,6 +1098,121 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     ]
     db.add_all(deal_activities)
     db.commit()
+
+    # ---- Billing: Customers, Items, Quotes, Invoices, Payments ---------------
+    # Billing defaults OFF (modules/billing/manifest.py) -- explicitly
+    # enabled for this workspace below (see WorkspaceModule block near the
+    # end of this function) so the seeded data is actually reachable
+    # through the UI, not just sitting in the DB.
+    bill_customers = [
+        Customer(
+            customer_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            name="Northwind Traders",
+            email="billing@northwindtraders.example.com",
+            phone="+1-555-0190",
+            billing_address="500 Trade Ave, Seattle, WA",
+            tax_id="US-NW-90210",
+        ),
+        Customer(
+            customer_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            name="Globex Corp",
+            email="ap@globex.example.com",
+            phone="+1-555-0191",
+            billing_address="1 Industrial Pkwy, Detroit, MI",
+        ),
+    ]
+    db.add_all(bill_customers)
+    db.commit()
+
+    bill_items = [
+        Item(item_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Consulting Hours", description="Hourly consulting/implementation work", unit_price=150.00, tax_rate=18.00),
+        Item(item_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Onboarding Package", description="Flat-fee onboarding and setup", unit_price=2000.00, tax_rate=0.00),
+        Item(item_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Support Retainer (Monthly)", description="Monthly support retainer", unit_price=500.00, tax_rate=18.00),
+    ]
+    db.add_all(bill_items)
+    db.commit()
+
+    db.add(BillingSequence(workspace_id=workspace.workspace_id, next_quote_number=3, next_invoice_number=2))
+    db.commit()
+
+    # Quote 1, for Northwind -- converted to an invoice below, and linked
+    # back onto deals[0] via the soft quote_id reference (Deal.quote_id
+    # has no FK constraint on purpose -- see modules/crm/models.py) so the
+    # "Northwind — annual contract" deal shows a real Quote/Invoice/Payment
+    # trail rather than just a dollar value on a pipeline card.
+    quote1 = Quote(
+        quote_id=uuid.uuid4(),
+        workspace_id=workspace.workspace_id,
+        customer_id=bill_customers[0].customer_id,
+        quote_number=1,
+        issue_date=(now - timedelta(days=10)).date(),
+        expiry_date=(now + timedelta(days=20)).date(),
+        status="accepted",
+        subtotal=3500.00,
+        tax_total=270.00,
+        total=3770.00,
+    )
+    db.add(quote1)
+    db.commit()
+    db.add_all([
+        QuoteLine(line_id=uuid.uuid4(), quote_id=quote1.quote_id, item_id=bill_items[1].item_id, description="Onboarding Package", quantity=1, unit_price=2000.00, tax_rate=0.00, line_total=2000.00, sort_order=0),
+        QuoteLine(line_id=uuid.uuid4(), quote_id=quote1.quote_id, item_id=bill_items[0].item_id, description="Consulting Hours", quantity=10, unit_price=150.00, tax_rate=18.00, line_total=1770.00, sort_order=1),
+    ])
+    db.commit()
+
+    deals[0].quote_id = quote1.quote_id
+    db.commit()
+
+    invoice1 = Invoice(
+        invoice_id=uuid.uuid4(),
+        workspace_id=workspace.workspace_id,
+        customer_id=bill_customers[0].customer_id,
+        quote_id=quote1.quote_id,
+        invoice_number=1,
+        issue_date=(now - timedelta(days=5)).date(),
+        due_date=(now + timedelta(days=15)).date(),
+        status="partially_paid",
+        subtotal=3500.00,
+        tax_total=270.00,
+        total=3770.00,
+    )
+    db.add(invoice1)
+    db.commit()
+    db.add_all([
+        InvoiceLine(line_id=uuid.uuid4(), invoice_id=invoice1.invoice_id, item_id=bill_items[1].item_id, description="Onboarding Package", quantity=1, unit_price=2000.00, tax_rate=0.00, line_total=2000.00, sort_order=0),
+        InvoiceLine(line_id=uuid.uuid4(), invoice_id=invoice1.invoice_id, item_id=bill_items[0].item_id, description="Consulting Hours", quantity=10, unit_price=150.00, tax_rate=18.00, line_total=1770.00, sort_order=1),
+    ])
+    db.commit()
+
+    bill_payments = [
+        Payment(payment_id=uuid.uuid4(), workspace_id=workspace.workspace_id, invoice_id=invoice1.invoice_id, amount=2000.00, payment_date=(now - timedelta(days=3)).date(), method="bank_transfer", reference="TXN-1001"),
+    ]
+    db.add_all(bill_payments)
+    db.commit()
+
+    # Quote 2, for Globex -- still just "sent", no invoice yet, so the
+    # Quotes list shows more than one status.
+    quote2 = Quote(
+        quote_id=uuid.uuid4(),
+        workspace_id=workspace.workspace_id,
+        customer_id=bill_customers[1].customer_id,
+        quote_number=2,
+        issue_date=(now - timedelta(days=2)).date(),
+        expiry_date=(now + timedelta(days=28)).date(),
+        status="sent",
+        subtotal=1500.00,
+        tax_total=270.00,
+        total=1770.00,
+    )
+    db.add(quote2)
+    db.commit()
+    db.add(QuoteLine(line_id=uuid.uuid4(), quote_id=quote2.quote_id, item_id=bill_items[2].item_id, description="Support Retainer (Monthly)", quantity=3, unit_price=500.00, tax_rate=18.00, line_total=1770.00, sort_order=0))
+    db.commit()
+
+    bill_quotes = [quote1, quote2]
+    bill_invoices = [invoice1]
 
     # ---- Inventory: Warehouses, Products, Stock movements --------------------
     warehouses = [
@@ -1085,6 +1354,67 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     db.add_all(exam_results)
     db.commit()
 
+    # ---- Library: Seats, Shifts, Members, Bookings, Attendance ---------------
+    # Library defaults OFF (modules/library/manifest.py) -- explicitly
+    # enabled for this workspace below (see WorkspaceModule block) same as
+    # Billing above.
+    lib_seats = [
+        Seat(seat_id=uuid.uuid4(), workspace_id=workspace.workspace_id, seat_number="A1", section="Reading Hall"),
+        Seat(seat_id=uuid.uuid4(), workspace_id=workspace.workspace_id, seat_number="A2", section="Reading Hall"),
+        Seat(seat_id=uuid.uuid4(), workspace_id=workspace.workspace_id, seat_number="B1", section="Quiet Zone"),
+    ]
+    db.add_all(lib_seats)
+    db.commit()
+
+    lib_shifts = [
+        Shift(shift_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Morning", start_time=time(7, 0), end_time=time(13, 0)),
+        Shift(shift_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Evening", start_time=time(13, 0), end_time=time(21, 0)),
+        Shift(shift_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="24 Hours", is_full_day=True),
+    ]
+    db.add_all(lib_shifts)
+    db.commit()
+
+    lib_members = [
+        Member(member_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Karan Mehta", phone="+91-98765-10001", email="karan.mehta@example.com", joined_on=(now - timedelta(days=60)).date(), status="active"),
+        Member(member_id=uuid.uuid4(), workspace_id=workspace.workspace_id, name="Fatima Sheikh", phone="+91-98765-10002", email="fatima.sheikh@example.com", joined_on=(now - timedelta(days=15)).date(), status="active"),
+    ]
+    db.add_all(lib_members)
+    db.commit()
+
+    lib_bookings = [
+        Booking(
+            booking_id=uuid.uuid4(), workspace_id=workspace.workspace_id,
+            member_id=lib_members[0].member_id, seat_id=lib_seats[0].seat_id, shift_id=lib_shifts[0].shift_id,
+            start_date=(now - timedelta(days=30)).date(), end_date=(now + timedelta(days=30)).date(),
+            fee_amount=1500.00, payment_status="paid", status="active",
+        ),
+        Booking(
+            booking_id=uuid.uuid4(), workspace_id=workspace.workspace_id,
+            member_id=lib_members[1].member_id, seat_id=lib_seats[2].seat_id, shift_id=lib_shifts[2].shift_id,
+            start_date=(now - timedelta(days=10)).date(), end_date=(now + timedelta(days=20)).date(),
+            fee_amount=2500.00, payment_status="pending", status="active",
+        ),
+    ]
+    db.add_all(lib_bookings)
+    db.commit()
+
+    lib_attendance = [
+        LibraryAttendance(attendance_id=uuid.uuid4(), workspace_id=workspace.workspace_id, booking_id=lib_bookings[0].booking_id, member_id=lib_members[0].member_id, date=now.date(), status="present", check_in_at=now - timedelta(hours=2)),
+        LibraryAttendance(attendance_id=uuid.uuid4(), workspace_id=workspace.workspace_id, booking_id=lib_bookings[1].booking_id, member_id=lib_members[1].member_id, date=now.date(), status="absent"),
+    ]
+    db.add_all(lib_attendance)
+    db.commit()
+
+    # ---- Enable the opt-in modules seeded above -------------------------------
+    # Billing and Library both default OFF (modules/*/manifest.py) -- a
+    # workspace with no row here would 403 on every route those modules
+    # gate, silently hiding all the data just created.
+    db.add_all([
+        WorkspaceModule(id=uuid.uuid4(), workspace_id=workspace.workspace_id, module_key="billing", enabled=True),
+        WorkspaceModule(id=uuid.uuid4(), workspace_id=workspace.workspace_id, module_key="library", enabled=True),
+    ])
+    db.commit()
+
     # ---- Chat + ChatMessages (the AI assistant feature) ------------------
     chat = Chat(
         chat_id=uuid.uuid4(),
@@ -1122,10 +1452,19 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
         "templates": templates,
         "activities": activities,
         "integrations": integrations,
+        "companies": companies,
         "contacts": contacts,
         "deals": deals,
         "contact_activities": contact_activities,
         "deal_activities": deal_activities,
+        "leads": leads,
+        "lead_activities": lead_activities,
+        "sprints": sprints,
+        "bill_customers": bill_customers,
+        "bill_items": bill_items,
+        "bill_quotes": bill_quotes,
+        "bill_invoices": bill_invoices,
+        "bill_payments": bill_payments,
         "warehouses": warehouses,
         "products": products,
         "stock_movements": stock_movements,
@@ -1140,6 +1479,11 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
         "fee_payments": fee_payments,
         "exams": exams,
         "exam_results": exam_results,
+        "lib_seats": lib_seats,
+        "lib_shifts": lib_shifts,
+        "lib_members": lib_members,
+        "lib_bookings": lib_bookings,
+        "lib_attendance": lib_attendance,
         "chat": chat,
         "chat_messages": chat_messages,
     }
@@ -1192,10 +1536,41 @@ def create_fixtures(db: Session):
             user_type=UserType.FREE.value,
             is_email_verified=False,
         ),
+        # _seed_workspace_content()'s HR block (Employee "Product Designer"/
+        # "QA Engineer" rows) requires designer/qa_engineer unconditionally --
+        # this used to call that helper with only owner=admin,
+        # teammate=member, leaving designer/qa_engineer at their None
+        # defaults and crashing with AttributeError the moment run_fixtures.py
+        # actually ran on a fresh DB (create_demo_account() already passed
+        # both correctly, which is why only the "Try Demo" path ever worked).
+        User(
+            user_id=uuid.uuid4(),
+            email="designer@example.com",
+            password_hash=pbkdf2_sha256.hash("Designer@123"),
+            first_name="Priya",
+            last_name="Patel",
+            avatar_url="https://i.pravatar.cc/300?img=47",
+            status=UserStatus.ACTIVE.value,
+            role=UserRoles.USER.value,
+            user_type=UserType.FREE.value,
+            is_email_verified=True,
+        ),
+        User(
+            user_id=uuid.uuid4(),
+            email="qa@example.com",
+            password_hash=pbkdf2_sha256.hash("Qa@12345"),
+            first_name="Jordan",
+            last_name="Kim",
+            avatar_url="https://i.pravatar.cc/300?img=68",
+            status=UserStatus.ACTIVE.value,
+            role=UserRoles.USER.value,
+            user_type=UserType.FREE.value,
+            is_email_verified=True,
+        ),
     ]
     db.add_all(users)
     db.commit()
-    admin, member, guest = users
+    admin, member, guest, designer, qa_engineer = users
 
     # ---- Workspace + membership ------------------------------------------
     workspace = Workspace(
@@ -1216,6 +1591,12 @@ def create_fixtures(db: Session):
     ))
     db.execute(workspace_users.insert().values(
         workspace_id=workspace.workspace_id, user_id=guest.user_id, role="guest"
+    ))
+    db.execute(workspace_users.insert().values(
+        workspace_id=workspace.workspace_id, user_id=designer.user_id, role="member"
+    ))
+    db.execute(workspace_users.insert().values(
+        workspace_id=workspace.workspace_id, user_id=qa_engineer.user_id, role="member"
     ))
     db.commit()
 
@@ -1260,7 +1641,7 @@ def create_fixtures(db: Session):
     db.add_all(user_settings)
     db.commit()
 
-    content = _seed_workspace_content(db, workspace, owner=admin, teammate=member)
+    content = _seed_workspace_content(db, workspace, owner=admin, teammate=member, designer=designer, qa_engineer=qa_engineer)
 
     return {
         "users": users,

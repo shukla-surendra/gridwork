@@ -1,41 +1,47 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity } from 'react-native';
+import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import Auth from '../../utils/auth';
+import { useTheme } from '../../hooks/useTheme';
 
 export default function TabLayout() {
     const router = useRouter();
+    const { theme } = useTheme();
 
-    const handleLogout = async () => {
+    useEffect(() => {
+        checkAuth();
+    }, []);
+
+    const checkAuth = async () => {
         try {
-            await Auth.logout();
-            router.replace('/(auth)/login');
+            const isLoggedIn = await Auth.loggedIn();
+            if (!isLoggedIn) {
+                router.replace('/(auth)/login');
+            }
         } catch (error) {
-            console.error('Logout failed:', error);
+            console.error('Auth check failed:', error);
+            router.replace('/(auth)/login');
         }
     };
 
     return (
         <Tabs
             screenOptions={{
-                tabBarActiveTintColor: '#007AFF',
-                tabBarInactiveTintColor: '#666',
+                tabBarActiveTintColor: theme.colors.primary,
+                tabBarInactiveTintColor: theme.colors.textSecondary,
                 tabBarStyle: {
-                    backgroundColor: '#fff',
+                    backgroundColor: theme.colors.background,
+                    borderTopColor: theme.colors.border,
                 },
-                headerRight: () => (
-                    <TouchableOpacity
-                        style={{ marginRight: 16 }}
-                        onPress={handleLogout}
-                    >
-                        <Ionicons name="log-out-outline" size={24} color="#007AFF" />
-                    </TouchableOpacity>
-                ),
+                headerStyle: {
+                    backgroundColor: theme.colors.background,
+                },
+                headerTintColor: theme.colors.text,
             }}
         >
             <Tabs.Screen
-                name="home"
+                name="index"
                 options={{
                     title: 'Home',
                     tabBarIcon: ({ color, size }) => (
@@ -53,23 +59,59 @@ export default function TabLayout() {
                 }}
             />
             <Tabs.Screen
-                name="notes"
+                name="boards"
                 options={{
-                    title: 'Notes',
+                    title: 'Boards',
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="document-text-outline" size={size} color={color} />
+                        <Ionicons name="grid" size={size} color={color} />
                     ),
                 }}
             />
             <Tabs.Screen
-                name="pomodoro"
+                name="calendar"
                 options={{
-                    title: 'Pomodoro',
+                    title: 'Calendar',
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="timer" size={size} color={color} />
+                        <Ionicons name="calendar" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="notes"
+                options={{
+                    title: 'Notes',
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="document-text" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="account"
+                options={{
+                    title: 'Account',
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="person" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="notifications"
+                options={{
+                    title: 'Notifications',
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="notifications" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="settings"
+                options={{
+                    title: 'Settings',
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="settings" size={size} color={color} />
                     ),
                 }}
             />
         </Tabs>
     );
-} 
+}

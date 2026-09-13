@@ -6,6 +6,6 @@
     "twitter_link": "https://twitter.com/GridWorkHQ",
     "linkedin_link":"https://www.linkedin.com/company/gridwork/",
     "instagram_link":"https://www.instagram.com/gridworkhq/",
-    "API_BASE_URL": "",
+    "API_BASE_URL": "https://20-241-208-190.nip.io",
     "API_VERSION": "api/v1"
 }

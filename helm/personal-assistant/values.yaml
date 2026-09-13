@@ -76,6 +76,13 @@ keda:
   cooldownPeriod: 60    # seconds queue must stay empty before scaling back to minReplicaCount
 
 frontend:
+  # false when assistant_web is served from Azure Storage static website +
+  # Front Door instead (terraform/frontend-cdn) -- the ingress then exposes
+  # only the backend, under /api (see templates/ingress.yaml), which is
+  # exactly the origin Front Door's /api/* route points at. true by default
+  # so the minikube flow in this chart's README (frontend + backend both in
+  # one cluster, no Front Door involved) is unaffected.
+  enabled: true
   image:
     repository: personal-assistant-frontend
     tag: latest
@@ -124,3 +131,16 @@ ingress:
     enabled: true
     requestsPerSecond: 10
     burstMultiplier: 5
+  # false until `host` is actually set (chicken-and-egg: the LB's public IP,
+  # and therefore any nip.io-style hostname built from it, isn't known until
+  # after ingress-nginx's Service already exists -- same reason `host`
+  # itself defaults empty). When true, cert-manager (installed as its own
+  # helm_release, terraform/application/main.tf) watches this Ingress via
+  # its annotation below and provisions a real Let's Encrypt cert with no
+  # custom domain required -- a browser calling this origin from an HTTPS
+  # page (e.g. assistant_web on its Storage static website) would otherwise
+  # be hard-blocked as mixed content, not just warned.
+  tls:
+    enabled: false
+    secretName: personal-assistant-tls
+    clusterIssuer: letsencrypt-prod

@@ -16,14 +16,41 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.rateLimit.requestsPerSecond | quote }}
     nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.rateLimit.burstMultiplier | quote }}
     {{- end }}
+    {{- if .Values.ingress.tls.enabled }}
+    # cert-manager's ingress-shim controller watches for this annotation on
+    # any Ingress and creates a matching Certificate object automatically --
+    # no separate Certificate resource needed in this chart.
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.clusterIssuer | quote }}
+    {{- end }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName | quote }}
+  {{- end }}
   rules:
     - {{- if .Values.ingress.host }}
       host: {{ .Values.ingress.host }}
       {{- end }}
       http:
         paths:
+          # Always present, frontend.enabled or not -- this is the one
+          # Front Door's /api/* route (terraform/frontend-cdn) points at
+          # once assistant_web moves off this cluster onto Storage +
+          # Front Door. Listed before "/" so it takes precedence
+          # regardless of path order (ingress-nginx matches by
+          # specificity, not declaration order, but this keeps the two
+          # rules visually in request-precedence order too).
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "pa.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.port }}
+          {{- if .Values.frontend.enabled }}
           - path: /
             pathType: Prefix
             backend:
@@ -31,4 +58,5 @@ spec:
                 name: {{ include "pa.fullname" . }}-frontend
                 port:
                   number: 80
+          {{- end }}
 {{- end }}

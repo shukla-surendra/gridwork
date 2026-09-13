@@ -21,7 +21,24 @@ terraform/keyvault/              Key Vault + the backend's Workload Identity.
                                  see the "Recreating just the cluster" gotcha
                                  below before tearing aks-infra down alone.
 terraform/application/          ingress-nginx + the app itself, on top of
-                                 whichever cluster currently exists.
+                                 whichever cluster currently exists. As of
+                                 2026-09-13, `deploy_frontend_to_aks`
+                                 defaults to false -- this stage installs
+                                 the backend only, exposed under /api; see
+                                 Step 7 for where assistant_web actually
+                                 goes.
+terraform/frontend-cdn/         assistant_web's static export, on an Azure
+                                 Storage static website -- not on the
+                                 cluster at all. See Step 7. (Originally
+                                 designed with Front Door in front of the
+                                 storage site; dropped after a real
+                                 `terraform apply` came back "Free Trial
+                                 and Student account is forbidden for
+                                 Azure Frontdoor resources" -- a hard
+                                 subscription-level block, not fixable by
+                                 changing SKU or config. The storage
+                                 account's own HTTPS endpoint IS the
+                                 frontend now.)
 ```
 
 (A fifth, `terraform/cicd/`, exists separately for GitHub Actions'
@@ -46,13 +63,20 @@ why this changed.
 | Piece | What it is | ~Cost/week |
 |---|---|---|
 | AKS control plane | Free SKU tier — no uptime SLA, $0 | $0 |
-| 1x Standard_D2s_v7 node | 2 vCPU / 8GB RAM | ~$22 |
+| 2x Standard_D2s_v7 nodes | 2 vCPU / 8GB RAM each (`node_count = 2` in aks-infra/terraform.tfvars) | ~$44 |
 | Standard Load Balancer | Required by AKS now (Basic SKU is gone) | ~$4 |
 | Public IP (Standard) | Attached to the LB | ~$1 |
 | ACR (Basic tier) | Container registry for your images | ~$1 |
 | Managed Disk (1Gi) | Postgres's PVC | ~$0.02 |
 | Container Insights | **Off by default** — log ingestion is the #1 surprise-bill cause | $0 (opt-in) |
-| **Total** | | **~$28-35** |
+| Storage account (LRS) | Hosts assistant_web's static export — its own HTTPS endpoint IS the frontend, no CDN | ~$0.10 |
+| **Total** | | **~$50** |
+
+No Front Door line — it's not deployable on this subscription at all (see
+the stage list above). If you're on a subscription where it IS allowed,
+re-adding it back into `terraform/frontend-cdn` would add Standard Front
+Door's flat monthly base fee (~$8-9/week, verify via
+`https://prices.azure.com/api/retail/prices`) plus usage.
 
 Node size changed from the original plan: this subscription's VM-size
 quota doesn't include the cheap burstable B-series at all (confirmed
@@ -222,14 +246,180 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller
 # EXTERNAL-IP column -- can take 1-2 minutes to populate after apply
 
 IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -s -o /dev/null -w "%{http_code}\n" http://$IP/            # frontend, expect 200
 curl -s http://$IP/api/v1/users/signup -X POST \
   -H "Content-Type: application/json" \
   -d '{"email":"aks-test@example.com","password":"TestPass123!","first_name":"AKS","last_name":"Test"}'
 ```
 
-Open `http://$IP/` in a browser — this is the same app you already tested
-on minikube, now on a real public IP.
+With `deploy_frontend_to_aks` at its default (`false`), `http://$IP/` has
+no frontend behind it at all -- only `/api/*` is routed, straight to the
+backend. That's expected; the frontend lives on Storage instead (Step 7).
+If you set `deploy_frontend_to_aks = true` to fall back to the old
+in-cluster nginx frontend, `http://$IP/` serves it directly and should
+return 200.
+
+**If this curl just times out** (not a 4xx/5xx, an actual connection
+timeout, from your own machine or anywhere else outside the cluster):
+check the Azure Load Balancer's health probe before assuming it's a
+firewall/NSG/sandbox problem. Confirmed live on this exact setup: Azure
+defaults the LB's health probe to `GET /` on the same port it's
+load-balancing (80), which 404s against ingress-nginx's default backend
+for any request whose Host doesn't match a configured Ingress rule --
+correct HTTP semantics, wrong thing for a health check. Azure's
+cloud-provider then marks the backend unhealthy and silently drops **all**
+external traffic to the public IP, while `kubectl get pods` and
+`kubectl get endpoints` still show everything healthy from inside the
+cluster -- nothing about the failure is visible from kubectl alone.
+`terraform/application/main.tf`'s `helm_release.ingress_nginx` now sets
+`controller.service.annotations.service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path=/healthz`
+to point the probe at `/healthz` instead, which ingress-nginx serves as a
+200 on its main port with no extra Service port needed -- verify with
+`az network lb probe list -g $(az aks show -g <rg> -n <cluster> --query nodeResourceGroup -o tsv) --lb-name kubernetes -o table`
+(`RequestPath` should read `/healthz`, not `/`). This is baked into the
+stage now, so a fresh deployment shouldn't hit it -- documented here
+because it cost real time to diagnose and looks exactly like a sandbox or
+NSG problem until you check the probe specifically.
+
+## Step 7 — Frontend: assistant_web on an Azure Storage static website (`terraform/frontend-cdn/`)
+
+assistant_web (`next.config.mjs`: `output: 'export'`) is a static site, not
+a server -- it never needs a pod. This stage uploads its build output to
+an Azure Storage static website; that account's own HTTPS endpoint IS the
+frontend URL, no CDN in front of it.
+
+**Front Door was the original design** (path-based routing: `/*` to the
+static site, `/api/*` to the backend, replacing the reverse-proxy job
+`assistant_web/nginx.conf.template`'s nginx used to do inside a
+container) — dropped after a real `terraform apply` against this
+subscription came back:
+```
+BadRequest: Free Trial and Student account is forbidden for Azure Frontdoor resources.
+```
+That's a hard subscription-level block (confirmed live, not assumed), not
+fixable by switching SKU or tweaking config. On a Pay-As-You-Go
+subscription, Front Door's `azurerm_cdn_frontdoor_*` resources would work
+as originally designed; here, without that split, the frontend calls the
+backend's own public IP directly instead — cross-origin. The backend's
+CORS is already wide open (`helm/personal-assistant/values.yaml`'s
+`allowedOrigins: "*"`), so cross-origin calls work with no backend change
+-- but the storage static website is HTTPS-only (Azure gives no way to
+turn that off), and a plain HTTP backend gets **hard-blocked** as mixed
+content by every modern browser, not just warned (confirmed live: an
+actual demo request logged as "blocked... must be served over HTTPS" in
+the browser console, not merely a lock-icon warning). The backend needs
+real TLS, which is Step 7a below, before this frontend can call it from
+anywhere.
+
+### Step 7a — TLS for the backend, with no custom domain (`cert-manager` + `nip.io`)
+
+`terraform/application/main.tf` now also installs `cert-manager` (same
+Helm-release pattern as ingress-nginx/KEDA). What's still manual, because
+it depends on the ingress IP the same way `backend_origin_host` used to:
+
+```bash
+IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+HOST="$(echo $IP | tr '.' '-').nip.io"   # 20.241.208.190 -> 20-241-208-190.nip.io --
+                                          # resolves back to that exact IP, no domain
+                                          # purchase or DNS setup needed
+echo $HOST
+```
+
+Edit `terraform/application/terraform.tfvars`: set `ingress_host` to that
+value, then `terraform apply` again from `terraform/application` — this
+sets `ingress.host` and flips `ingress.tls.enabled` on in the Helm values,
+which adds a `cert-manager.io/cluster-issuer` annotation to the app's own
+Ingress.
+
+cert-manager's CRDs (`ClusterIssuer`, etc.) come from that same Helm
+release, but the actual `ClusterIssuer` object is **not** Terraform-managed
+(a `kubernetes_manifest` resource for a CRD that's created in the same
+apply as the CRD itself is a real chicken-and-egg problem — simpler to
+apply once by hand):
+
+```bash
+cat <<'EOF' | kubectl apply -f -
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: YOUR_EMAIL_HERE
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+EOF
+
+kubectl get clusterissuer letsencrypt-prod        # READY: True once registered
+kubectl get certificate -n personal-assistant     # READY: True once issued -- a minute or two
+```
+
+**If the Certificate stays stuck `READY: False`** with a Challenge in
+state `invalid` and a message like `Timeout during connect (likely
+firewall problem)` — that's Let's Encrypt's own validator unable to reach
+the ingress on port 80, and it means the LB health-probe bug described in
+Step 6 hasn't actually been fixed for this cluster (an older
+`terraform/application` state, or a hand-edited Service). Fix that first;
+Let's Encrypt validation will retry and succeed on its own once the LB
+actually forwards traffic. Confirm the probe with the same
+`az network lb probe list` command from Step 6.
+
+Once `kubectl get certificate` shows `READY: True`:
+
+```bash
+curl https://$HOST/api/v1/users/signup -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"email":"tls-test@example.com","password":"TestPass123!","first_name":"TLS","last_name":"Test"}'
+```
+
+### Step 7b — Build and upload the frontend
+
+```bash
+cd assistant_web
+npm ci
+# Edit src/config.json: API_BASE_URL -> https://<the nip.io host from 7a>
+# e.g. "API_BASE_URL": "https://20-241-208-190.nip.io"
+npm run build            # writes assistant_web/out/ -- frontend-cdn/main.tf
+                          # uploads whatever's there at apply time, it
+                          # doesn't build anything itself
+
+cd ../terraform/frontend-cdn
+terraform init
+terraform plan
+terraform apply
+
+terraform output -raw storage_static_website_url
+```
+
+Open that URL in a browser.
+
+**Re-deploying after a frontend code change**: `npm run build` again,
+`terraform apply` again from `terraform/frontend-cdn` -- only files whose
+content actually changed get re-uploaded (`content_md5` on each
+`azurerm_storage_blob`). If the ingress IP ever changes (recreating
+`aks-infra` or the ingress-nginx Service reassigns a new one), the nip.io
+hostname changes too -- repeat Step 7a's `ingress_host` update AND Step
+7b's `config.json` edit; the frontend has no way to discover the
+backend's address on its own, and the old Let's Encrypt cert won't match
+the new hostname either.
+
+**A known gap in "Storage static website, no CDN"**: Azure Storage static
+websites don't rewrite extension-less URLs to `.html` the way nginx's
+`try_files` did (`assistant_web/nginx.conf.template`, no longer in the
+request path at all now that the frontend isn't a container). `/login.html`
+loads directly; `/login` 404s. Client-side navigation from the app itself
+is unaffected (Next's router handles it after the JS bundle loads) — this
+only bites a hard refresh or a shared deep link to a path without
+`.html`. Fixable by setting the static website's 404 document to
+`index.html` (Next then client-side-routes to the right page after
+hydration, with a brief flash of the wrong page) or by re-adding Front
+Door once this subscription allows it (real path-based routing, no
+flash) — neither is done here; flagging it rather than picking one
+unasked.
 
 ## Shipping a code update to an already-running cluster
 
@@ -382,7 +572,16 @@ holds:
 
 ```bash
 cd terraform/application
-terraform destroy       # removes the Helm releases -- LB, Public IP, Ingress cleanly torn down
+terraform destroy       # removes the Helm releases (ingress-nginx, KEDA, cert-manager,
+                         # personal-assistant) -- LB, Public IP, Ingress cleanly torn down.
+                         # cert-manager's uninstall removes its CRDs too, which cascades
+                         # to delete the ClusterIssuer and Certificate objects Step 7a
+                         # created by hand -- no separate cleanup needed for those.
+
+cd ../frontend-cdn
+terraform destroy       # removes the storage account (and every blob in it) --
+                         # independent of the cluster, but still must go before
+                         # container-registry below deletes the shared RG
 
 cd ../aks-infra
 terraform destroy       # removes the AKS cluster (+ its MC_* resource group), VNet, budget --

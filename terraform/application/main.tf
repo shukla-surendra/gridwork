@@ -32,6 +32,23 @@ resource "helm_release" "ingress_nginx" {
     name  = "controller.service.type"
     value = "LoadBalancer"
   }
+
+  # Without this, Azure's LB health probe defaults to GET / on the same
+  # port it load-balances (80) -- which 404s for any request whose Host
+  # doesn't match one of this cluster's Ingress rules (nginx's built-in
+  # default-backend behavior, correct HTTP semantics, just not what a
+  # health check wants). Azure's cloud-provider then marks the backend
+  # unhealthy and silently drops ALL external traffic to the LB's public
+  # IP -- confirmed live: this is what caused both my own curls AND Let's
+  # Encrypt's HTTP-01 validator to see connection timeouts against a
+  # correctly-configured NSG/LB, not a firewall or sandbox issue as first
+  # suspected. /healthz already returns 200 on the controller's main port
+  # with no extra Service port needed (verified: `wget http://localhost:80/healthz`
+  # from inside the controller pod) -- just needs Azure told to probe it.
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/azure-load-balancer-health-probe-request-path"
+    value = "/healthz"
+  }
 }
 
 # Event-driven autoscaling operator, open-source, deployed via Helm --
@@ -65,6 +82,26 @@ resource "helm_release" "keda" {
   }
 }
 
+# Open-source, free, deployed via Helm -- same pattern as ingress-nginx/keda
+# above. Watches Ingress objects carrying the cert-manager.io/cluster-issuer
+# annotation (set on the app's own Ingress below, gated by
+# var.ingress_host) and provisions real Let's Encrypt certs automatically,
+# no manual cert handling. crds.enabled installs its CRDs (Certificate,
+# ClusterIssuer, etc.) as part of this same release rather than a separate
+# kubectl apply of cert-manager's CRD yaml.
+resource "helm_release" "cert_manager" {
+  name             = "cert-manager"
+  repository       = "https://charts.jetstack.io"
+  chart            = "cert-manager"
+  namespace        = "cert-manager"
+  create_namespace = true
+
+  set {
+    name  = "crds.enabled"
+    value = "true"
+  }
+}
+
 resource "helm_release" "personal_assistant" {
   name             = "personal-assistant"
   chart            = "${path.module}/../../helm/personal-assistant"
@@ -83,8 +120,10 @@ resource "helm_release" "personal_assistant" {
   # app's own Ingress would be created against an ingress class with no
   # controller behind it yet. Also waits for KEDA's CRDs (ScaledObject,
   # TriggerAuthentication) to be registered before this chart tries to
-  # create resources of those kinds.
-  depends_on = [helm_release.ingress_nginx, helm_release.keda]
+  # create resources of those kinds, and for cert-manager's CRDs
+  # (Certificate, ClusterIssuer) before this chart's Ingress carries an
+  # annotation referencing them.
+  depends_on = [helm_release.ingress_nginx, helm_release.keda, helm_release.cert_manager]
 
   set {
     name  = "backend.image.repository"
@@ -97,6 +136,14 @@ resource "helm_release" "personal_assistant" {
   set {
     name  = "backend.image.pullPolicy"
     value = "IfNotPresent"
+  }
+  # false by default now -- assistant_web is served from Storage + Front
+  # Door (terraform/frontend-cdn), not this cluster. The image.* sets below
+  # stay harmless either way: with frontend.enabled=false the chart never
+  # renders the Deployment that would consume them.
+  set {
+    name  = "frontend.enabled"
+    value = var.deploy_frontend_to_aks
   }
   set {
     name  = "frontend.image.repository"
@@ -113,6 +160,20 @@ resource "helm_release" "personal_assistant" {
   set {
     name  = "ingress.enabled"
     value = "true"
+  }
+  set {
+    name  = "ingress.host"
+    value = var.ingress_host
+  }
+  # Empty ingress_host (default, e.g. on a first apply before the LB's IP is
+  # known) forces this to "false" -- there's no host yet for cert-manager to
+  # issue a cert for. Get the IP from this stage's own
+  # get_ingress_ip_command output, build a nip.io hostname from it
+  # (e.g. "20-241-208-190.nip.io"), set ingress_host, and re-apply to turn
+  # TLS on with no custom domain required.
+  set {
+    name  = "ingress.tls.enabled"
+    value = var.ingress_host != "" ? "true" : "false"
   }
 
   set_sensitive {

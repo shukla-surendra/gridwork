@@ -62,10 +62,22 @@ variable "storage_account_name" {
   default     = ""
 }
 
+variable "ingress_host" {
+  description = "A hostname for the app's Ingress and (once set) its Let's Encrypt cert -- e.g. a nip.io hostname built from this stage's own get_ingress_ip_command output (20.241.208.190 -> \"20-241-208-190.nip.io\"), or a real domain if you have one. Empty (the default, e.g. on a first apply before the LB's IP exists) means no host match and no TLS -- the Ingress serves any Host header over plain HTTP, same as before this variable existed."
+  type        = string
+  default     = ""
+}
+
 variable "otel_collector_endpoint" {
   description = "The observability stage's shared OTel Collector service (terraform/observability's helm_release.otel_collector) -- a separate Terraform stage/state, not this one, hence a plain default rather than a cross-stage output reference (same independent-stage pattern as every other stage in this project). Empty disables app-side telemetry entirely."
   type        = string
   default     = "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318"
+}
+
+variable "deploy_frontend_to_aks" {
+  description = "false = assistant_web is NOT installed into this cluster -- it's served from Azure Storage static website + Front Door instead (terraform/frontend-cdn), and the Helm chart's ingress exposes only the backend, under /api. Default false because that's the intended shape now; set true to fall back to the old in-cluster nginx frontend (e.g. no Front Door stage applied yet)."
+  type        = bool
+  default     = false
 }
 
 variable "postgres_password" {

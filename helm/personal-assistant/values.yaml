@@ -89,6 +89,9 @@ frontend:
     pullPolicy: Never
   replicaCount: 1
   port: 80
+  # What the browser calls for the API. Empty = same origin (nginx proxies /api/
+  # to the backend Service). Set a full URL to point the UI elsewhere.
+  apiBaseUrl: ""
 
 postgres:
   image: postgres:15

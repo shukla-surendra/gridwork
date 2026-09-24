@@ -47,6 +47,10 @@ spec:
               value: {{ include "pa.fullname" . }}-backend
             - name: BACKEND_PORT
               value: {{ .Values.backend.port | quote }}
+            # Browser-facing backend URL (served as /runtime-config.js). Empty =
+            # same origin, via the /api/ proxy above.
+            - name: API_BASE_URL
+              value: {{ .Values.frontend.apiBaseUrl | default "" | quote }}
           readinessProbe:
             httpGet:
               path: /

@@ -3,7 +3,12 @@ import ConfigService from "./utils/config";
 import auth from "./utils/auth";
 import config from './config.json';
 
-export const BACKEND_URL = `${config.API_BASE_URL}`;
+// Runtime value (container env, via /runtime-config.js) wins over the build-time
+// config.json one. "" is a valid runtime value: same-origin, i.e. nginx's /api/ proxy.
+const runtimeBase =
+  typeof window !== "undefined" ? window.__RUNTIME_CONFIG__?.API_BASE_URL : undefined;
+
+export const BACKEND_URL = typeof runtimeBase === "string" ? runtimeBase : `${config.API_BASE_URL}`;
 
 export const getBackendUrl = () => {
   return BACKEND_URL;

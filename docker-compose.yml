@@ -87,6 +87,13 @@ services:
   # reference during the cutover period; it's no longer built here.
   frontend:
     build: ./assistant_web
+    environment:
+      # Server-side: where nginx proxies /api/ to.
+      - BACKEND_HOST=backend
+      - BACKEND_PORT=8000
+      # Browser-side: empty = same origin (via the proxy above). Override to point
+      # the UI at another backend, e.g. API_BASE_URL=https://api.example.com docker compose up -d
+      - API_BASE_URL=${API_BASE_URL:-}
     ports:
       - "3000:80"
     depends_on:

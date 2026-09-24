@@ -16,4 +16,7 @@ COPY --from=build /app/out /usr/share/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 ENV BACKEND_HOST=backend
 ENV BACKEND_PORT=8000
+# What the *browser* calls (served as /runtime-config.js). Empty = same origin,
+# proxied to BACKEND_HOST:BACKEND_PORT above. Or a full URL, e.g. https://api.example.com
+ENV API_BASE_URL=""
 EXPOSE 80

@@ -397,6 +397,13 @@ terraform output -raw storage_static_website_url
 
 Open that URL in a browser.
 
+**Note -- backend URL is runtime-configurable in the container image**: the
+Docker/Helm frontend reads `API_BASE_URL` from its container env (Helm:
+`frontend.apiBaseUrl`) and serves it as `/runtime-config.js`, so no rebuild is
+needed there; empty means same-origin via nginx's `/api/` proxy. This
+Storage-static-website path has no container, so it still uses the build-time
+`config.json` edit above.
+
 **Re-deploying after a frontend code change**: `npm run build` again,
 `terraform apply` again from `terraform/frontend-cdn` -- only files whose
 content actually changed get re-uploaded (`content_md5` on each

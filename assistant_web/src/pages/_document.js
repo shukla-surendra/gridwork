@@ -10,6 +10,9 @@ export default function Document() {
         <meta name="description" content="GridWork -- one workspace for wherever work happens, from local to remote" />
         <meta name="keyword" content="GridWork, productivity, workspace, remote work" />
         <link rel="icon" href="/favicon.ico" />
+        {/* Blocking on purpose: must run before the app bundle so http-common.js
+            can read window.__RUNTIME_CONFIG__ (backend URL from container env). */}
+        <script src="/runtime-config.js" />
       </Head>
       <body>
         {/* Sets the color-mode cookie/localStorage value before hydration

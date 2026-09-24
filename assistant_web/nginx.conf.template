@@ -8,6 +8,15 @@ server {
     # absolute host/IP -- same setup as ../assistant_web/nginx.conf.template.
     # BACKEND_HOST (and BACKEND_PORT) are substituted at container start
     # (nginx's built-in envsubst-on-templates mechanism).
+    # Browser-side settings from container env, so the same image works against
+    # any backend without a rebuild. API_BASE_URL="" (default) = same-origin,
+    # i.e. the /api/ proxy below; set it to a full URL to call a backend directly.
+    location = /runtime-config.js {
+        default_type application/javascript;
+        add_header Cache-Control "no-store";
+        return 200 'window.__RUNTIME_CONFIG__ = { API_BASE_URL: "${API_BASE_URL}" };';
+    }
+
     location /api/ {
         proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT}/api/;
         proxy_set_header Host $host;

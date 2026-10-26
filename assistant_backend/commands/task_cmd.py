@@ -54,12 +54,17 @@ class TaskUpdateCommand(BaseModel):
     user_id: Optional[str] = None
     assignee_id: Optional[str] = None
     reporter_id: Optional[str] = None
-    watchers: Optional[list] = []
-    labels: Optional[list] = []
+    # None (not []/{}) so a partial update that omits these leaves them
+    # untouched -- the handler only skips a field when it's None, so an
+    # empty-collection default silently wiped labels/watchers/meta_data
+    # on every Kanban drag or backlog epic/sprint change. Send [] / {}
+    # explicitly to clear.
+    watchers: Optional[list] = None
+    labels: Optional[list] = None
     checklist: Optional[list] = None
     public_access: Optional[bool] = None  # Combined field for public access
-    meta_data: Optional[dict] = {}
-    settings: Optional[dict] = {}
+    meta_data: Optional[dict] = None
+    settings: Optional[dict] = None
     title: Optional[str] = None
     description: Optional[str] = None
     priority: Optional[str] = None

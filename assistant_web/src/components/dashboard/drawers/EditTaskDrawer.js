@@ -26,6 +26,8 @@ import SprintService from "../../../services/SprintService";
 import MemberService from "../../../services/MemberService";
 import ConfigService from "../../../utils/config";
 import { formatLocalDateTime } from "../../../utils/locale";
+import { ISSUE_TYPES, issueTypeOf, withIssueType } from "../../../utils/issueTypes";
+import { browseUrl } from "../../../utils/issueLinks";
 
 const LINK_TYPE_LABELS = {
   blocks: "Blocks",
@@ -48,6 +50,7 @@ const PRIORITY_COLORS = {
 const STATUS_CONFIG = {
   todo: { color: "gray", label: "To Do" },
   in_progress: { color: "blue", label: "In Progress" },
+  review: { color: "purple", label: "Review" },
   done: { color: "green", label: "Done" }
 };
 
@@ -113,6 +116,16 @@ export default function EditTaskDrawer(props) {
       setBoardSprints([]);
     }
   }, [isOpen, currentTask?.board_id, sprintsEnabled]);
+
+  const copyIssueLink = async () => {
+    if (!currentTask?.ticket_key) return;
+    try {
+      await navigator.clipboard.writeText(browseUrl(currentTask.ticket_key));
+      toast({ title: `Link to ${currentTask.ticket_key} copied`, status: "success", duration: 2000, isClosable: true });
+    } catch {
+      toast({ title: "Couldn't copy link", status: "error", duration: 2500, isClosable: true });
+    }
+  };
 
   const handleStoryPointsChange = (e) => {
     const value = e.target.value;
@@ -341,14 +354,29 @@ export default function EditTaskDrawer(props) {
                 onClick={onClose}
                 aria-label="Back"
               />
+              {currentTask?.ticket_key && (
+                <HStack spacing={1.5}>
+                  <Icon as={ISSUE_TYPES[issueTypeOf(currentTask)].icon} color={ISSUE_TYPES[issueTypeOf(currentTask)].color} />
+                  <Text fontSize="sm" fontWeight="semibold" color={mutedColor}>{currentTask.ticket_key}</Text>
+                  <Tooltip label="Copy link to issue">
+                    <IconButton
+                      icon={<Icon as={FaLink} />}
+                      variant="ghost"
+                      size="xs"
+                      onClick={copyIssueLink}
+                      aria-label={`Copy link to ${currentTask.ticket_key}`}
+                    />
+                  </Tooltip>
+                </HStack>
+              )}
               <Badge 
-                colorScheme={STATUS_CONFIG[currentTask?.status || 'todo'].color}
+                colorScheme={(STATUS_CONFIG[currentTask?.status] || STATUS_CONFIG.todo).color}
                 px={2}
                 py={1}
                 borderRadius="full"
                 fontSize="xs"
               >
-                {STATUS_CONFIG[currentTask?.status || 'todo'].label}
+                {(STATUS_CONFIG[currentTask?.status] || STATUS_CONFIG.todo).label}
               </Badge>
             </HStack>
             <HStack spacing={2} position="absolute" right="4" zIndex={1}>
@@ -361,8 +389,8 @@ export default function EditTaskDrawer(props) {
                   aria-label="More options"
                 />
                 <MenuList shadow="lg" py={2}>
-                  <MenuItem icon={<Icon as={FaShare} />} py={2}>
-                    Share
+                  <MenuItem icon={<Icon as={FaShare} />} py={2} onClick={copyIssueLink} isDisabled={!currentTask?.ticket_key}>
+                    Share (copy link)
                   </MenuItem>
                   <MenuDivider />
                   <MenuItem icon={<Icon as={FaCheckCircle} />} py={2}>
@@ -400,6 +428,29 @@ export default function EditTaskDrawer(props) {
 
             {/* Task Metadata */}
             <VStack spacing={4} align="stretch">
+              {/* Issue type -- Jira-style Story/Task/Bug, only meaningful
+                  for cards on a board (see utils/issueTypes.js). */}
+              {currentTask?.board_id && (
+                <FormControl>
+                  <HStack spacing={3}>
+                    <Icon as={ISSUE_TYPES[issueTypeOf(currentTask)].icon} color={ISSUE_TYPES[issueTypeOf(currentTask)].color} />
+                    <Select
+                      aria-label="Issue type"
+                      value={issueTypeOf(currentTask)}
+                      onChange={(e) => setCurrentTask(prev => withIssueType(prev, e.target.value))}
+                      size="sm"
+                      width="150px"
+                      variant="filled"
+                      bg={inputBg}
+                    >
+                      {Object.entries(ISSUE_TYPES).map(([value, config]) => (
+                        <option key={value} value={value}>{config.label}</option>
+                      ))}
+                    </Select>
+                  </HStack>
+                </FormControl>
+              )}
+
               {/* Status and Priority */}
               <HStack spacing={6}>
                 <FormControl>
@@ -414,9 +465,9 @@ export default function EditTaskDrawer(props) {
                       variant="filled"
                       bg={inputBg}
                     >
-                      <option value="todo">To Do</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="done">Done</option>
+                      {Object.entries(STATUS_CONFIG).map(([value, config]) => (
+                        <option key={value} value={value}>{config.label}</option>
+                      ))}
                     </Select>
                   </HStack>
                 </FormControl>
@@ -426,7 +477,7 @@ export default function EditTaskDrawer(props) {
                     <Icon as={FaTag} color={mutedColor} />
                     <Select
                       name="priority"
-                      value={currentTask?.priority || ''}
+                      value={(currentTask?.priority || '').toLowerCase()}
                       onChange={handleInputChange}
                       size="sm"
                       width="150px"
@@ -434,7 +485,7 @@ export default function EditTaskDrawer(props) {
                       bg={inputBg}
                     >
                       {Object.keys(PRIORITY_COLORS).map(priority => (
-                        <option key={priority} value={priority}>
+                        <option key={priority} value={priority.toLowerCase()}>
                           {priority}
                         </option>
                       ))}

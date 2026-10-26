@@ -117,7 +117,10 @@ class Task(Base):
     # Sequential per-board ticket number (1, 2, 3, ...), assigned atomically
     # from the owning board's next_task_number counter at creation time.
     # Combined with Board.key it renders as "ENG-42" (see TaskDtoMapper).
-    # Null when the task has no board -- boardless tasks/notes don't get a key.
+    # A task with no board is numbered from its workspace's counter instead
+    # (Workspace.key, e.g. "PW-7"). Notes/quick notes/time blocks aren't
+    # work items and stay null. Moving a task to a different board re-keys
+    # it from the new board, same as moving an issue between Jira projects.
     task_number = Column(Integer, nullable=True)
     # Trello-style checklist: [{"id": ..., "text": ..., "done": bool}, ...].
     # A plain JSONB list rather than a child table -- same tradeoff already
@@ -182,6 +185,13 @@ class Workspace(Base):
     is_default = Column(Boolean, default=False)
     is_template = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False)
+    # Ticket prefix for work items that aren't on any board (e.g. "PW" in
+    # "PW-7") -- the workspace-level counterpart of Board.key /
+    # Board.next_task_number. Shares a namespace with this workspace's board
+    # keys (see utils/ticket_keys.py) so every key resolves to one task.
+    # Generated lazily the first time a boardless task needs a number.
+    key = Column(String, nullable=True)
+    next_task_number = Column(Integer, nullable=False, default=1, server_default="1")
     created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
     updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
     owner = relationship("User", foreign_keys=[owner_id])

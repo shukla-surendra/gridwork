@@ -23,6 +23,7 @@ from modules.library.models import (
     Seat, Shift, Member, Booking, Attendance as LibraryAttendance,
 )
 from constants import TaskStatus, TaskType, TaskPriority, UserStatus, UserRoles, UserType
+from utils.ticket_keys import generate_key
 
 
 def _html(*paragraphs: str) -> str:
@@ -41,6 +42,35 @@ def _html(*paragraphs: str) -> str:
     otherwise opening one of these notes to actually EDIT it would show
     the raw JSON text as literal content inside the Tiptap editor."""
     return "".join(f"<p>{p}</p>" for p in paragraphs)
+
+
+# Seeded rows bypass TaskHandler.create_task, so they never went through
+# its ticket numbering -- do the same job in one pass afterwards: give each
+# board (and, for boardless work items, the workspace) a key and number
+# tasks in creation order, exactly as the add_ticket_numbering /
+# add_workspace_ticket_keys migrations backfill real data.
+_UNTICKETED_TYPES = (TaskType.NOTE.value, TaskType.QUICK_NOTE.value, TaskType.TIME_BLOCK.value)
+
+
+def _assign_ticket_keys(db: Session, workspace: Workspace):
+    taken = set()
+    boards = db.query(Board).filter(Board.workspace_id == workspace.workspace_id).order_by(Board.created_at.asc()).all()
+    owners = [(board, Task.board_id == board.board_id) for board in boards] + [(workspace, Task.board_id.is_(None))]
+    for owner, scope in owners:
+        if owner.key:
+            taken.add(owner.key)
+            continue
+        owner.key = generate_key(owner.name, taken, fallback="BRD" if owner is not workspace else "TASK")
+        taken.add(owner.key)
+        tasks = db.query(Task).filter(
+            Task.workspace_id == workspace.workspace_id,
+            scope,
+            Task.task_type.notin_(_UNTICKETED_TYPES),
+        ).order_by(Task.created_at.asc(), Task.task_id.asc()).all()
+        for number, task in enumerate(tasks, start=1):
+            task.task_number = number
+        owner.next_task_number = len(tasks) + 1
+    db.commit()
 
 
 def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, teammate: User, designer: User = None, qa_engineer: User = None):
@@ -1432,6 +1462,8 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     ]
     db.add_all(chat_messages)
     db.commit()
+
+    _assign_ticket_keys(db, workspace)
 
     return {
         "board": board,

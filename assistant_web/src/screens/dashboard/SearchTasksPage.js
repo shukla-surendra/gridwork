@@ -37,7 +37,9 @@ import {
   CardFooter,
   HStack,
   IconButton,
+  Link,
 } from "@chakra-ui/react";
+import { browsePath } from "../../utils/issueLinks";
 import { 
   FiSearch, 
   FiFilter, 
@@ -108,8 +110,10 @@ export default function SearchTasksPage() {
   // Filter tasks based on search and filter criteria
   const filteredTasks = tasks
     .filter(task => {
-      const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          task.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = (task.title || '').toLowerCase().includes(query) ||
+                          (task.description || '').toLowerCase().includes(query) ||
+                          (task.ticket_key || '').toLowerCase().includes(query);
       
       const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
       const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter;
@@ -329,6 +333,11 @@ export default function SearchTasksPage() {
                     >
                       <CardHeader>
                         <Stack spacing={2}>
+                          {task.ticket_key && (
+                            <Link href={browsePath(task.ticket_key)} fontSize="xs" fontWeight="bold" color="gray.500">
+                              {task.ticket_key}
+                            </Link>
+                          )}
                           <Heading size="md" color={textColor}>
                             {task.title}
                           </Heading>

@@ -35,6 +35,7 @@ import { formatLocalDateTime } from "@/utils/locale"
 import { Tabs, TabList, TabPanels, Tab, TabPanel } from '@chakra-ui/react'
 import Header from "@/components/dashboard/Header";
 import { useRouter } from 'next/router';
+import useSelectedIssue from '@/hooks/useSelectedIssue';
 import { FaTrash, FaEdit, FaEye } from 'react-icons/fa';
 import TaskViewModal from "@/components/dashboard/modals/TaskViewModal";
 import UnifiedEditButton from "@/components/dashboard/UnifiedEditButton";
@@ -143,9 +144,17 @@ export default function TasksPage() {
     new_task_drawer.onOpen();
   };
 
+  // ?selectedIssue=PW-7 opens that issue (shared links, /browse
+  // redirects), and opening one puts its key in the URL.
+  const { selectIssue, clearSelectedIssue } = useSelectedIssue((task) => {
+    setCurrentTask(task);
+    edit_task_drawer.onOpen();
+  });
+
   const handleUpdateItem = (task) => {
     setCurrentTask(task);
     edit_task_drawer.onOpen();
+    selectIssue(task);
   };
 
   const handleTaskUpdate = (updatedTask) => {
@@ -425,7 +434,10 @@ export default function TasksPage() {
       <EditTaskDrawer
         currentTask={currentTask}
         setCurrentTask={setCurrentTask}
-        disclosures={edit_task_drawer}
+        disclosures={{
+          isOpen: edit_task_drawer.isOpen,
+          onClose: () => { edit_task_drawer.onClose(); clearSelectedIssue(); },
+        }}
         onTaskUpdate={handleTaskUpdate}
       />
       <NewTaskDrawer

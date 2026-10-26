@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "postgresql://postgres:postgres@db:5432/productify"
+        "postgresql+psycopg2://postgres:postgres@db:5432/productify"
     )
     
     # OpenAI
@@ -119,7 +119,11 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def database_url(self) -> str:
-        return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        # Driver named explicitly: SQLAlchemy 2.1 switched the bare
+        # "postgresql://" default from psycopg2 to psycopg (v3), which this
+        # image doesn't install -- the backend crashed on boot with
+        # "No module named 'psycopg'".
+        return f"postgresql+psycopg2://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
     
     # Auth settings
     auth_type: str = "jwt"

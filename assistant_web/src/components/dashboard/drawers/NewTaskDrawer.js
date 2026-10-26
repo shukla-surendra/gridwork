@@ -20,6 +20,7 @@ import {
 import { FiMoreHorizontal, FiCheck, FiClock } from "react-icons/fi";
 import RichTextEditor from '../editor/RichTextEditor';
 import ConfigService from "../../../utils/config";
+import { ISSUE_TYPES, issueTypeOf, withIssueType } from "../../../utils/issueTypes";
 import EpicService from "../../../services/EpicService";
 import SprintService from "../../../services/SprintService";
 import MemberService from "../../../services/MemberService";
@@ -52,6 +53,7 @@ const PRIORITY_LEVELS = [
 const STATUS_CONFIG = {
   todo: { color: "gray", label: "To Do" },
   in_progress: { color: "blue", label: "In Progress" },
+  review: { color: "purple", label: "Review" },
   done: { color: "green", label: "Done" }
 };
 
@@ -407,13 +409,13 @@ export default function NewTaskDrawer(props) {
                 aria-label="Back"
               />
               <Badge 
-                colorScheme={STATUS_CONFIG[currentTask?.status || 'todo'].color}
+                colorScheme={(STATUS_CONFIG[currentTask?.status] || STATUS_CONFIG.todo).color}
                 px={2}
                 py={1}
                 borderRadius="full"
                 fontSize="xs"
               >
-                {STATUS_CONFIG[currentTask?.status || 'todo'].label}
+                {(STATUS_CONFIG[currentTask?.status] || STATUS_CONFIG.todo).label}
               </Badge>
             </HStack>
             <HStack spacing={2} position="absolute" right="4" zIndex={1}>
@@ -462,6 +464,29 @@ export default function NewTaskDrawer(props) {
 
             {/* Task Metadata */}
             <VStack spacing={4} align="stretch">
+              {/* Issue type -- Jira-style Story/Task/Bug, only meaningful
+                  for cards on a board (see utils/issueTypes.js). */}
+              {currentTask?.board_id && (
+                <FormControl>
+                  <HStack spacing={3}>
+                    <Icon as={ISSUE_TYPES[issueTypeOf(currentTask)].icon} color={ISSUE_TYPES[issueTypeOf(currentTask)].color} />
+                    <Select
+                      aria-label="Issue type"
+                      value={issueTypeOf(currentTask)}
+                      onChange={(e) => setCurrentTask(prev => withIssueType(prev, e.target.value))}
+                      size="sm"
+                      width="150px"
+                      variant="filled"
+                      bg={inputBg}
+                    >
+                      {Object.entries(ISSUE_TYPES).map(([value, config]) => (
+                        <option key={value} value={value}>{config.label}</option>
+                      ))}
+                    </Select>
+                  </HStack>
+                </FormControl>
+              )}
+
               {/* Status and Priority */}
               <HStack spacing={6}>
                 <FormControl>

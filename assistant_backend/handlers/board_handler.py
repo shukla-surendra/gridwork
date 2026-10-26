@@ -1,7 +1,7 @@
-import re
 from uuid import UUID
 from adapters.orm.models.pg_models import Board, Activity
 from adapters.orm.models.database import SessionLocal
+from utils.ticket_keys import generate_key, taken_keys
 from commands.board_cmd import BoardCommand, BoardUpdateCommand, BoardDeleteCommand
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
@@ -19,28 +19,9 @@ class BoardHandler:
         self.db = SessionLocal()
 
     def _generate_key(self, name: str, workspace_id) -> str:
-        """Jira-style short prefix: initials of each word (up to 4), or the
-        first 4 letters of a single-word name. Uniquified per workspace by
-        appending a numeric suffix on collision."""
-        words = re.findall(r"[A-Za-z0-9]+", name or "")
-        if len(words) > 1:
-            base = "".join(w[0] for w in words[:4]).upper()
-        elif words:
-            base = words[0][:4].upper()
-        else:
-            base = "BRD"
-
-        existing = {
-            row[0] for row in self.db.query(Board.key).filter(
-                Board.workspace_id == workspace_id, Board.key.isnot(None)
-            ).all()
-        }
-        key = base
-        suffix = 2
-        while key in existing:
-            key = f"{base}{suffix}"
-            suffix += 1
-        return key
+        """Jira-style short prefix -- avoids every key already used in the
+        workspace, including the workspace's own key for boardless tasks."""
+        return generate_key(name, taken_keys(self.db, workspace_id), fallback="BRD")
 
     def _log_activity(self, workspace_id, user_id, action, entity_type, entity_id, properties=None):
         try:

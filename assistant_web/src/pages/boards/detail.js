@@ -4,193 +4,47 @@ import { useSelector } from 'react-redux';
 import { selectIsModuleEnabled } from '../../slices/modules';
 import FeatureDisabledPage from '../../components/dashboard/FeatureDisabledPage';
 import {
-  Box, Flex, Heading, Text, HStack, VStack, Badge, IconButton, Avatar,
+  Box, Heading, Text, HStack, VStack, Badge, IconButton,
   useColorModeValue, useDisclosure, Spinner, Center, useToast, Icon,
-  Tabs, TabList, TabPanels, Tab, TabPanel, Button, Select,
+  Tabs, TabList, TabPanels, Tab, TabPanel, Button,
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, ModalFooter,
-  FormControl, FormLabel, Input, Textarea, SimpleGrid, Tag, TagLabel, Divider,
-  Menu, MenuButton, MenuList, MenuItem, Tooltip,
+  FormControl, FormLabel, Input, Textarea, SimpleGrid, Divider,
+  Menu, MenuButton, MenuList, MenuItem, Tooltip, Kbd,
 } from '@chakra-ui/react';
-import { FiArrowLeft, FiPlus, FiMoreVertical, FiTrash2, FiPlay, FiCheckCircle, FiMessageSquare, FiCheckSquare } from 'react-icons/fi';
+import { FiArrowLeft, FiPlus, FiMoreVertical, FiTrash2, FiPlay, FiCheckCircle, FiClock } from 'react-icons/fi';
 import { BsKanban } from 'react-icons/bs';
-import {
-  DndContext, DragOverlay, closestCorners, PointerSensor, useSensor, useSensors, useDroppable,
-} from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import Navbar from '../../components/dashboard/Navbar';
 import Header from '../../components/dashboard/Header';
 import NewTaskDrawer from '../../components/dashboard/drawers/NewTaskDrawer';
 import EditTaskDrawer from '../../components/dashboard/drawers/EditTaskDrawer';
+import BoardFilters, { EMPTY_FILTERS, matchesFilters } from '../../components/boards/BoardFilters';
+import KanbanBoard from '../../components/boards/KanbanBoard';
+import { BacklogContainer, formatSprintDates } from '../../components/boards/Backlog';
+import { StartSprintModal, CompleteSprintModal } from '../../components/boards/SprintModals';
 import BoardService from '../../services/BoardService';
 import TaskService from '../../services/taskservice';
 import EpicService from '../../services/EpicService';
 import SprintService from '../../services/SprintService';
-import { labelForStatus as labelFor, PRIORITY_COLOR } from '../../utils/taskStatus';
+import MemberService from '../../services/MemberService';
+import ConfigService from '../../utils/config';
+import useSelectedIssue from '../../hooks/useSelectedIssue';
 
 const DEFAULT_COLUMNS = ["todo", "in_progress", "review", "done"];
 const EPIC_COLORS = ["#6554C0", "#36B37E", "#00B8D9", "#FF5630", "#FFAB00", "#0052CC", "#DE350B"];
+const BOARD_TAB = 0;
+const BACKLOG_TAB = 1;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-function KanbanCard({ task, epic, onClick }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.task_id });
-  const cardBg = useColorModeValue('white', 'gray.700');
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  };
+const daysRemainingLabel = (sprint) => {
+  if (!sprint?.end_date) return null;
+  const days = Math.ceil((new Date(sprint.end_date) - new Date()) / DAY_MS);
+  if (days < 0) return { text: `Ended ${-days} ${days === -1 ? 'day' : 'days'} ago`, overdue: true };
+  return { text: `${days} ${days === 1 ? 'day' : 'days'} remaining`, overdue: false };
+};
 
-  return (
-    <Box
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      bg={cardBg}
-      p={3}
-      mb={2}
-      borderRadius="md"
-      borderLeftWidth={epic ? "3px" : 0}
-      borderLeftColor={epic ? epic.color : undefined}
-      boxShadow="sm"
-      cursor="grab"
-      onClick={() => onClick(task)}
-      _hover={{ boxShadow: 'md' }}
-    >
-      {task.ticket_key && (
-        <Text fontSize="2xs" fontWeight="bold" color="gray.500" mb={1}>{task.ticket_key}</Text>
-      )}
-      <Text fontSize="sm" fontWeight="medium" mb={2} noOfLines={3}>{task.title}</Text>
-
-      {task.labels && task.labels.length > 0 && (
-        <HStack spacing={1} flexWrap="wrap" mb={2}>
-          {task.labels.map((label) => (
-            <Box key={label} h="6px" w="24px" borderRadius="full" bg="teal.400" title={label} />
-          ))}
-        </HStack>
-      )}
-
-      <HStack spacing={2} flexWrap="wrap" mb={epic || task.checklist?.length || task.comments?.length ? 2 : 0}>
-        <Badge colorScheme={PRIORITY_COLOR[task.priority] || 'gray'} fontSize="2xs">{task.priority}</Badge>
-        {epic && (
-          <Tag size="sm" borderRadius="full" bg={epic.color} color="white" fontSize="2xs">
-            <TagLabel>{epic.title}</TagLabel>
-          </Tag>
-        )}
-      </HStack>
-
-      <Flex justify="space-between" align="center">
-        <HStack spacing={3}>
-          {task.due_on && (
-            <HStack spacing={1}>
-              <Text
-                fontSize="2xs"
-                color={new Date(task.due_on) < new Date() && !task.completed ? 'red.500' : 'gray.500'}
-                fontWeight={new Date(task.due_on) < new Date() && !task.completed ? 'bold' : 'normal'}
-              >
-                {new Date(task.due_on).toLocaleDateString()}
-              </Text>
-            </HStack>
-          )}
-          {task.checklist && task.checklist.length > 0 && (
-            <HStack spacing={1}>
-              <Icon as={FiCheckSquare} boxSize={3} color="gray.500" />
-              <Text fontSize="2xs" color="gray.500">
-                {task.checklist.filter(i => i.done).length}/{task.checklist.length}
-              </Text>
-            </HStack>
-          )}
-          {task.comments && task.comments.length > 0 && (
-            <HStack spacing={1}>
-              <Icon as={FiMessageSquare} boxSize={3} color="gray.500" />
-              <Text fontSize="2xs" color="gray.500">{task.comments.length}</Text>
-            </HStack>
-          )}
-        </HStack>
-        {task.assignee && (
-          <Tooltip label={`${task.assignee.first_name} ${task.assignee.last_name}`}>
-            <Avatar
-              size="2xs"
-              name={`${task.assignee.first_name} ${task.assignee.last_name}`}
-              src={task.assignee.avatar_url}
-            />
-          </Tooltip>
-        )}
-      </Flex>
-    </Box>
-  );
-}
-
-function KanbanColumn({ status, tasks, epicsById, onCardClick, onAddCard }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
-  const columnBg = useColorModeValue('gray.100', 'gray.900');
-
-  return (
-    <Box
-      ref={setNodeRef}
-      bg={isOver ? 'teal.50' : columnBg}
-      borderRadius="lg"
-      p={3}
-      minW="280px"
-      maxW="280px"
-      flexShrink={0}
-      transition="background 0.15s ease"
-    >
-      <HStack justify="space-between" mb={3}>
-        <HStack>
-          <Text fontWeight="bold" fontSize="sm">{labelFor(status)}</Text>
-          <Badge borderRadius="full">{tasks.length}</Badge>
-        </HStack>
-        <IconButton
-          icon={<FiPlus />}
-          size="xs"
-          variant="ghost"
-          aria-label={`Add card to ${labelFor(status)}`}
-          onClick={() => onAddCard(status)}
-        />
-      </HStack>
-      <SortableContext items={tasks.map(t => t.task_id)} strategy={verticalListSortingStrategy}>
-        <Box minH="40px">
-          {tasks.map(task => (
-            <KanbanCard key={task.task_id} task={task} epic={epicsById[task.epic_id]} onClick={onCardClick} />
-          ))}
-        </Box>
-      </SortableContext>
-    </Box>
-  );
-}
-
-function BacklogTaskRow({ task, epics, sprintOptions, onOpen, onChangeEpic, onChangeSprint }) {
-  const rowBg = useColorModeValue('white', 'gray.700');
-  return (
-    <HStack bg={rowBg} p={2} borderRadius="md" boxShadow="xs" justify="space-between">
-      <Box flex={1} cursor="pointer" onClick={() => onOpen(task)}>
-        <Text fontSize="sm" fontWeight="medium" noOfLines={1}>{task.title}</Text>
-      </Box>
-      <HStack spacing={2}>
-        <Badge colorScheme={PRIORITY_COLOR[task.priority] || 'gray'} fontSize="2xs">{task.priority}</Badge>
-        <Select
-          size="xs"
-          width="140px"
-          value={task.epic_id || ''}
-          onChange={(e) => onChangeEpic(task, e.target.value)}
-        >
-          <option value="">No epic</option>
-          {epics.map(e => <option key={e.epic_id} value={e.epic_id}>{e.title}</option>)}
-        </Select>
-        <Select
-          size="xs"
-          width="140px"
-          value={task.sprint_id || ''}
-          onChange={(e) => onChangeSprint(task, e.target.value)}
-        >
-          <option value="">Backlog</option>
-          {sprintOptions.map(s => <option key={s.sprint_id} value={s.sprint_id}>{s.name}</option>)}
-        </Select>
-      </HStack>
-    </HStack>
-  );
-}
+// Jira's "c" shortcut -- ignored while typing or with a modifier held.
+const isTypingTarget = (el) =>
+  el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
 
 export default function BoardDetailPage() {
   const router = useRouter();
@@ -202,6 +56,8 @@ export default function BoardDetailPage() {
   const editTaskDisclosure = useDisclosure();
   const epicsModal = useDisclosure();
   const sprintModal = useDisclosure();
+  const startSprintModal = useDisclosure();
+  const completeSprintModal = useDisclosure();
   const epicsEnabled = useSelector((state) => selectIsModuleEnabled(state, 'epics'));
   const sprintsEnabled = useSelector((state) => selectIsModuleEnabled(state, 'sprints'));
   const boardsEnabled = useSelector((state) => selectIsModuleEnabled(state, 'boards'));
@@ -210,14 +66,19 @@ export default function BoardDetailPage() {
   const [tasksByStatus, setTasksByStatus] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTask, setActiveTask] = useState(null);
   const [newCardStatus, setNewCardStatus] = useState(null);
   const [currentTask, setCurrentTask] = useState(null);
+  const [tabIndex, setTabIndex] = useState(BOARD_TAB);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [groupBy, setGroupBy] = useState('none');
+  const [members, setMembers] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   const [epics, setEpics] = useState([]);
   const [sprints, setSprints] = useState([]);
   const [backlogTasks, setBacklogTasks] = useState([]);
   const [sprintTasksById, setSprintTasksById] = useState({});
+  const [sprintToStart, setSprintToStart] = useState(null);
   const [newEpicTitle, setNewEpicTitle] = useState('');
   const [newEpicColor, setNewEpicColor] = useState(EPIC_COLORS[0]);
   const [newEpicDescription, setNewEpicDescription] = useState('');
@@ -227,6 +88,7 @@ export default function BoardDetailPage() {
   const pageBg = useColorModeValue('gray.50', 'gray.900');
   const mainBg = useColorModeValue('gray.50', 'gray.800');
   const panelBg = useColorModeValue('gray.100', 'gray.900');
+  const swatchBorder = useColorModeValue('black', 'white');
 
   const columns = useMemo(
     () => (board?.properties?.columns?.length ? board.properties.columns : DEFAULT_COLUMNS),
@@ -236,9 +98,21 @@ export default function BoardDetailPage() {
   const epicsById = useMemo(() => Object.fromEntries(epics.map(e => [e.epic_id, e])), [epics]);
   const activeSprint = useMemo(() => sprints.find(s => s.status === 'active'), [sprints]);
   const plannedSprints = useMemo(() => sprints.filter(s => s.status === 'planned'), [sprints]);
-  const sprintOptionsForMove = useMemo(() => sprints.filter(s => s.status !== 'completed'), [sprints]);
+  const openSprints = useMemo(() => sprints.filter(s => s.status !== 'completed'), [sprints]);
+  const isVisible = useCallback((task) => matchesFilters(task, filters, currentUserId), [filters, currentUserId]);
+  const boardTasks = useMemo(() => Object.values(tasksByStatus).flat(), [tasksByStatus]);
+  const sprintRemaining = daysRemainingLabel(activeSprint);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  useEffect(() => {
+    try {
+      setCurrentUserId(ConfigService.getUserId());
+      MemberService.getMembers(ConfigService.getDefaultWorkspace().workspace_id)
+        .then(res => setMembers(res.data))
+        .catch(() => setMembers([]));
+    } catch {
+      // Not logged in / no workspace yet -- filters just won't offer people.
+    }
+  }, []);
 
   const groupTasks = (tasks, cols) => {
     const grouped = Object.fromEntries(cols.map(c => [c, []]));
@@ -258,7 +132,6 @@ export default function BoardDetailPage() {
     // undefined id rather than flashing an error state that immediately
     // self-corrects once boardId shows up and this effect re-runs.
     if (!boardId) return;
-    setLoading(true);
     setError(null);
     try {
       const boardRes = await BoardService.get(boardId);
@@ -291,6 +164,7 @@ export default function BoardDetailPage() {
   }, [boardId]);
 
   const loadBacklogView = useCallback(async () => {
+    if (!boardId) return;
     try {
       const [backlogRes, sprintsData] = await Promise.all([
         TaskService.getBacklog(boardId),
@@ -301,8 +175,8 @@ export default function BoardDetailPage() {
       setBacklogTasks(backlogRes.data);
       setSprints(sprintsData);
 
-      const openSprints = sprintsData.filter(s => s.status !== 'completed');
-      const entries = await Promise.all(openSprints.map(s =>
+      const open = sprintsData.filter(s => s.status !== 'completed');
+      const entries = await Promise.all(open.map(s =>
         TaskService.getBySprint(boardId, s.sprint_id).then(res => [s.sprint_id, res.data])
       ));
       setSprintTasksById(Object.fromEntries(entries));
@@ -311,102 +185,60 @@ export default function BoardDetailPage() {
     }
   }, [boardId, toast]);
 
+  // Refresh whatever the user is looking at. Only the very first load shows
+  // the full-page spinner -- later refreshes update in place so an edit
+  // made from the Backlog tab doesn't bounce the user back to the Board.
+  const refresh = useCallback(() => {
+    loadBoard();
+    if (tabIndex === BACKLOG_TAB) loadBacklogView();
+  }, [loadBoard, loadBacklogView, tabIndex]);
+
   useEffect(() => { loadBoard(); }, [loadBoard]);
 
-  const findContainer = (id) => {
-    if (id in tasksByStatus) return id; // dropped directly on a column
-    return Object.keys(tasksByStatus).find(col => tasksByStatus[col].some(t => t.task_id === id));
-  };
-
-  const handleDragStart = (event) => {
-    const task = Object.values(tasksByStatus).flat().find(t => t.task_id === event.active.id);
-    setActiveTask(task);
-  };
-
-  const handleDragOver = (event) => {
-    const { active, over } = event;
-    if (!over) return;
-    const activeContainer = findContainer(active.id);
-    const overContainer = findContainer(over.id);
-    if (!activeContainer || !overContainer || activeContainer === overContainer) return;
-
-    setTasksByStatus(prev => {
-      const activeItems = prev[activeContainer];
-      const overItems = prev[overContainer];
-      const activeIndex = activeItems.findIndex(t => t.task_id === active.id);
-      const overIndex = overItems.findIndex(t => t.task_id === over.id);
-      const movedTask = { ...activeItems[activeIndex], status: overContainer };
-      const newOverIndex = overIndex >= 0 ? overIndex : overItems.length;
-
-      return {
-        ...prev,
-        [activeContainer]: activeItems.filter(t => t.task_id !== active.id),
-        [overContainer]: [
-          ...overItems.slice(0, newOverIndex),
-          movedTask,
-          ...overItems.slice(newOverIndex),
-        ],
-      };
-    });
-  };
-
-  const persistColumn = (status, tasks) => {
-    return Promise.all(tasks.map((task, index) =>
-      TaskService.update(task.task_id, {
-        task_id: task.task_id,
-        workspace_id: task.workspace_id,
-        user_id: task.user_id,
-        status,
-        order: index,
-        board_id: boardId,
-      })
-    ));
-  };
-
-  const handleDragEnd = (event) => {
-    const { active, over } = event;
-    setActiveTask(null);
-    if (!over) return;
-
-    const activeContainer = findContainer(active.id);
-    const overContainer = findContainer(over.id);
-    if (!activeContainer || !overContainer) return;
-
-    let finalTasksByStatus = tasksByStatus;
-    if (activeContainer === overContainer && active.id !== over.id) {
-      const items = tasksByStatus[activeContainer];
-      const oldIndex = items.findIndex(t => t.task_id === active.id);
-      const newIndex = items.findIndex(t => t.task_id === over.id);
-      finalTasksByStatus = { ...tasksByStatus, [activeContainer]: arrayMove(items, oldIndex, newIndex) };
-      setTasksByStatus(finalTasksByStatus);
-    }
-
-    // Persist the column(s) that actually changed -- covers both a
-    // same-column reorder and a cross-column move (handleDragOver already
-    // moved the card locally in the cross-column case).
-    const columnsToSave = new Set([activeContainer, overContainer]);
-    columnsToSave.forEach(status => {
-      persistColumn(status, finalTasksByStatus[status]).catch(() => {
+  const persistColumns = (statuses, state) => {
+    statuses.forEach(status => {
+      Promise.all((state[status] || []).map((task, index) =>
+        TaskService.update(task.task_id, { status, order: index, board_id: boardId })
+      )).catch(() => {
         toast({ title: "Couldn't save card position", status: "error", duration: 3000, isClosable: true });
         loadBoard();
       });
     });
   };
 
-  const handleAddCard = (status) => {
+  const openNewCard = newCardDisclosure.onOpen;
+  const handleAddCard = useCallback((status) => {
     setNewCardStatus(status);
-    newCardDisclosure.onOpen();
-  };
+    openNewCard();
+  }, [openNewCard]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(document.activeElement)) return;
+      if (newCardDisclosure.isOpen || editTaskDisclosure.isOpen || document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      handleAddCard(columns[0]);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [columns, handleAddCard, newCardDisclosure.isOpen, editTaskDisclosure.isOpen]);
+
+  // ?selectedIssue=ENG-42 opens that issue (shared links, /browse
+  // redirects), and opening a card puts its key in the URL.
+  const { selectIssue, clearSelectedIssue } = useSelectedIssue((task) => {
+    setCurrentTask(task);
+    editTaskDisclosure.onOpen();
+  });
 
   const handleCardClick = (task) => {
     setCurrentTask(task);
     editTaskDisclosure.onOpen();
+    selectIssue(task);
   };
 
-  // EditTaskDrawer already persisted the edit itself (it dispatches its own
-  // updateTask before calling this) -- just refresh the board's view.
-  const handleTaskUpdate = () => {
-    loadBoard();
+  const handleTabChange = (index) => {
+    setTabIndex(index);
+    if (index === BACKLOG_TAB) loadBacklogView();
   };
 
   const handleCreateEpic = async () => {
@@ -427,18 +259,24 @@ export default function BoardDetailPage() {
     try {
       await EpicService.remove(boardId, epicId);
       setEpics(prev => prev.filter(e => e.epic_id !== epicId));
-      loadBoard();
+      if (filters.epicId === epicId) setFilters(prev => ({ ...prev, epicId: '' }));
+      refresh();
     } catch {
       toast({ title: "Couldn't delete epic", status: "error", duration: 3000, isClosable: true });
     }
+  };
+
+  // Jira pre-fills new sprints as "<KEY> Sprint <n>".
+  const openCreateSprint = () => {
+    setNewSprintName(`${board?.key || board?.name || ''} Sprint ${sprints.length + 1}`.trim());
+    setNewSprintGoal('');
+    sprintModal.onOpen();
   };
 
   const handleCreateSprint = async () => {
     if (!newSprintName.trim()) return;
     try {
       await SprintService.create(boardId, { name: newSprintName.trim(), goal: newSprintGoal || null });
-      setNewSprintName('');
-      setNewSprintGoal('');
       sprintModal.onClose();
       loadBacklogView();
     } catch {
@@ -446,22 +284,35 @@ export default function BoardDetailPage() {
     }
   };
 
-  const handleStartSprint = async (sprintId) => {
+  const openStartSprint = (sprint) => {
+    setSprintToStart(sprint);
+    startSprintModal.onOpen();
+  };
+
+  const handleStartSprint = async ({ name, goal, start_date, end_date }) => {
     try {
-      await SprintService.start(boardId, sprintId);
+      await SprintService.update(boardId, sprintToStart.sprint_id, { name, goal, start_date, end_date });
+      await SprintService.start(boardId, sprintToStart.sprint_id);
+      toast({ title: `${name} started`, status: "success", duration: 2500, isClosable: true });
+      loadBoard();
       loadBacklogView();
+      return true;
     } catch (e) {
       toast({ title: e.response?.data?.detail || "Couldn't start sprint", status: "error", duration: 3000, isClosable: true });
+      return false;
     }
   };
 
-  const handleCompleteSprint = async (sprintId) => {
+  const handleCompleteSprint = async () => {
     try {
-      await SprintService.complete(boardId, sprintId);
-      loadBacklogView();
+      await SprintService.complete(boardId, activeSprint.sprint_id);
+      toast({ title: `${activeSprint.name} completed`, status: "success", duration: 2500, isClosable: true });
       loadBoard();
+      loadBacklogView();
+      return true;
     } catch (e) {
       toast({ title: e.response?.data?.detail || "Couldn't complete sprint", status: "error", duration: 3000, isClosable: true });
+      return false;
     }
   };
 
@@ -476,11 +327,8 @@ export default function BoardDetailPage() {
 
   const handleChangeTaskEpic = async (task, epicId) => {
     try {
-      await TaskService.update(task.task_id, {
-        task_id: task.task_id, workspace_id: task.workspace_id, user_id: task.user_id,
-        epic_id: epicId,
-      });
-      loadBacklogView();
+      await TaskService.update(task.task_id, { epic_id: epicId });
+      refresh();
     } catch {
       toast({ title: "Couldn't update epic", status: "error", duration: 3000, isClosable: true });
     }
@@ -488,43 +336,64 @@ export default function BoardDetailPage() {
 
   const handleChangeTaskSprint = async (task, sprintId) => {
     try {
-      await TaskService.update(task.task_id, {
-        task_id: task.task_id, workspace_id: task.workspace_id, user_id: task.user_id,
-        sprint_id: sprintId,
-      });
-      loadBacklogView();
+      await TaskService.update(task.task_id, { sprint_id: sprintId });
+      refresh();
     } catch {
-      toast({ title: "Couldn't move card", status: "error", duration: 3000, isClosable: true });
+      toast({ title: "Couldn't move issue", status: "error", duration: 3000, isClosable: true });
     }
   };
+
+  // Inline "+ Create issue" from a backlog/sprint container. Errors are
+  // surfaced by the inline input itself, so let them propagate.
+  const handleInlineCreate = (sprintId) => async (title, issueType) => {
+    await TaskService.create({
+      title,
+      task_type: 'task',
+      status: columns[0],
+      priority: 'medium',
+      board_id: boardId,
+      sprint_id: sprintId || null,
+      meta_data: { issue_type: issueType },
+    });
+    loadBacklogView();
+    if (sprintId && sprintId === activeSprint?.sprint_id) loadBoard();
+  };
+
+  const moveTargetsFor = (sprintId) => () => [
+    ...(sprintId ? [{ id: '', name: 'Backlog' }] : []),
+    ...openSprints.filter(s => s.sprint_id !== sprintId).map(s => ({ id: s.sprint_id, name: s.name })),
+  ];
+
+  const containerProps = (sprintId) => ({
+    epics,
+    epicsById,
+    moveTargetsFor: moveTargetsFor(sprintId),
+    onOpen: handleCardClick,
+    onChangeEpic: handleChangeTaskEpic,
+    onChangeSprint: handleChangeTaskSprint,
+    onCreate: handleInlineCreate(sprintId),
+  });
 
   if (!boardsEnabled) {
     return <FeatureDisabledPage featureName="Boards" />;
   }
 
-  if (loading) {
+  if (loading || error || !board) {
     return (
       <Box minH="100vh" bg={pageBg}>
         <Navbar isCollapsed={isMenuCollapsed} />
         <Box ml={{ base: 0, md: isMenuCollapsed ? '60px' : '250px' }}>
           <Header onMenuToggle={() => setIsMenuCollapsed(!isMenuCollapsed)} />
-          <Center py={20}><Spinner /></Center>
+          <Center py={20}>
+            {loading ? <Spinner /> : <Text color="red.500">{error || "Board not found"}</Text>}
+          </Center>
         </Box>
       </Box>
     );
   }
 
-  if (error || !board) {
-    return (
-      <Box minH="100vh" bg={pageBg}>
-        <Navbar isCollapsed={isMenuCollapsed} />
-        <Box ml={{ base: 0, md: isMenuCollapsed ? '60px' : '250px' }}>
-          <Header onMenuToggle={() => setIsMenuCollapsed(!isMenuCollapsed)} />
-          <Center py={20}><Text color="red.500">{error || "Board not found"}</Text></Center>
-        </Box>
-      </Box>
-    );
-  }
+  const activeSprintTasks = activeSprint ? (sprintTasksById[activeSprint.sprint_id] || []) : [];
+  const doneInSprint = boardTasks.filter(t => t.status === 'done').length;
 
   return (
     <Box minH="100vh" bg={pageBg}>
@@ -532,156 +401,138 @@ export default function BoardDetailPage() {
       <Box ml={{ base: 0, md: isMenuCollapsed ? '60px' : '250px' }} transition="all 0.3s ease">
         <Header onMenuToggle={() => setIsMenuCollapsed(!isMenuCollapsed)} />
         <Box as="main" p={{ base: 3, md: 4 }} minH="calc(100vh - 4rem)" bg={mainBg} borderRadius="lg" boxShadow="sm">
-          <HStack mb={4} justify="space-between">
+          <HStack mb={1} justify="space-between" flexWrap="wrap" gap={2}>
             <HStack>
               <IconButton icon={<FiArrowLeft />} variant="ghost" size="sm" aria-label="Back to boards" onClick={() => navigate('/boards')} />
               <Icon as={BsKanban} color="teal.500" />
-              <Heading size="lg">{board.name}</Heading>
-              {activeSprint && (
-                <Badge colorScheme="teal" borderRadius="full" px={2}>{activeSprint.name} active</Badge>
-              )}
+              <Heading size="lg">{tabIndex === BOARD_TAB && activeSprint ? activeSprint.name : board.name}</Heading>
+              {board.key && <Badge variant="outline" colorScheme="gray">{board.key}</Badge>}
             </HStack>
-            {epicsEnabled && (
-              <Button size="sm" variant="outline" onClick={epicsModal.onOpen}>Manage Epics</Button>
-            )}
+            <HStack>
+              {tabIndex === BOARD_TAB && sprintsEnabled && activeSprint && (
+                <>
+                  {sprintRemaining && (
+                    <HStack spacing={1} color={sprintRemaining.overdue ? 'red.500' : 'gray.500'}>
+                      <Icon as={FiClock} />
+                      <Text fontSize="sm">{sprintRemaining.text}</Text>
+                    </HStack>
+                  )}
+                  <Button size="sm" leftIcon={<FiCheckCircle />} colorScheme="teal" onClick={completeSprintModal.onOpen}>
+                    Complete sprint
+                  </Button>
+                </>
+              )}
+              {epicsEnabled && (
+                <Button size="sm" variant="outline" onClick={epicsModal.onOpen}>Manage Epics</Button>
+              )}
+              <Tooltip label={<>Create issue <Kbd>c</Kbd></>}>
+                <Button size="sm" leftIcon={<FiPlus />} colorScheme="teal" variant="solid" onClick={() => handleAddCard(columns[0])}>
+                  Create
+                </Button>
+              </Tooltip>
+            </HStack>
           </HStack>
+          {tabIndex === BOARD_TAB && activeSprint && (
+            <Text fontSize="sm" color="gray.500" mb={3} ml={10}>
+              {[board.name, formatSprintDates(activeSprint), activeSprint.goal && `Goal: ${activeSprint.goal}`].filter(Boolean).join(' · ')}
+            </Text>
+          )}
 
-          <Tabs colorScheme="teal" onChange={(index) => { if (index === 1) loadBacklogView(); }}>
+          <Tabs colorScheme="teal" index={tabIndex} onChange={handleTabChange} mt={2}>
             <TabList>
-              <Tab>Board</Tab>
+              <Tab>{activeSprint ? 'Active sprint' : 'Board'}</Tab>
               <Tab>Backlog</Tab>
             </TabList>
             <TabPanels>
               <TabPanel px={0}>
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCorners}
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDragEnd={handleDragEnd}
-                >
-                  <Flex gap={4} overflowX="auto" pb={4} align="flex-start">
-                    {columns.map(status => (
-                      <KanbanColumn
-                        key={status}
-                        status={status}
-                        tasks={tasksByStatus[status] || []}
-                        epicsById={epicsById}
-                        onCardClick={handleCardClick}
-                        onAddCard={handleAddCard}
-                      />
-                    ))}
-                  </Flex>
-                  <DragOverlay>
-                    {activeTask ? (
-                      <Box bg="white" p={3} borderRadius="md" boxShadow="lg" maxW="260px">
-                        <Text fontSize="sm" fontWeight="medium">{activeTask.title}</Text>
-                      </Box>
-                    ) : null}
-                  </DragOverlay>
-                </DndContext>
+                <BoardFilters
+                  filters={filters}
+                  onChange={setFilters}
+                  members={members}
+                  epics={epicsEnabled ? epics : []}
+                  groupBy={groupBy}
+                  onGroupByChange={setGroupBy}
+                />
+                <KanbanBoard
+                  columns={columns}
+                  tasksByStatus={tasksByStatus}
+                  setTasksByStatus={setTasksByStatus}
+                  isVisible={isVisible}
+                  groupBy={groupBy}
+                  epics={epics}
+                  epicsById={epicsById}
+                  currentUserId={currentUserId}
+                  onCardClick={handleCardClick}
+                  onAddCard={handleAddCard}
+                  onPersist={persistColumns}
+                />
               </TabPanel>
 
               <TabPanel px={0}>
+                <BoardFilters
+                  filters={filters}
+                  onChange={setFilters}
+                  members={members}
+                  epics={epicsEnabled ? epics : []}
+                />
                 <VStack align="stretch" spacing={4}>
                   {sprintsEnabled && activeSprint && (
-                    <Box bg={panelBg} borderRadius="lg" p={3}>
-                      <HStack justify="space-between" mb={2}>
-                        <HStack>
-                          <Text fontWeight="bold" fontSize="sm">{activeSprint.name}</Text>
-                          <Badge colorScheme="teal">Active</Badge>
-                          <Badge borderRadius="full">{(sprintTasksById[activeSprint.sprint_id] || []).length}</Badge>
-                        </HStack>
-                        <Button size="xs" leftIcon={<FiCheckCircle />} colorScheme="teal" onClick={() => handleCompleteSprint(activeSprint.sprint_id)}>
-                          Complete Sprint
+                    <BacklogContainer
+                      title={activeSprint.name}
+                      badge={<Badge colorScheme="teal">Active</Badge>}
+                      subtitle={[formatSprintDates(activeSprint), activeSprint.goal && `Goal: ${activeSprint.goal}`].filter(Boolean).join(' · ')}
+                      tasks={activeSprintTasks.filter(isVisible)}
+                      totalCount={activeSprintTasks.length}
+                      emptyText="No issues in this sprint."
+                      actions={
+                        <Button size="xs" leftIcon={<FiCheckCircle />} colorScheme="teal" onClick={completeSprintModal.onOpen}>
+                          Complete sprint
                         </Button>
-                      </HStack>
-                      {activeSprint.goal && <Text fontSize="xs" color="gray.500" mb={2}>Goal: {activeSprint.goal}</Text>}
-                      <VStack align="stretch" spacing={1}>
-                        {(sprintTasksById[activeSprint.sprint_id] || []).map(task => (
-                          <BacklogTaskRow
-                            key={task.task_id}
-                            task={task}
-                            epics={epics}
-                            sprintOptions={sprintOptionsForMove}
-                            onOpen={handleCardClick}
-                            onChangeEpic={handleChangeTaskEpic}
-                            onChangeSprint={handleChangeTaskSprint}
-                          />
-                        ))}
-                      </VStack>
-                    </Box>
+                      }
+                      {...containerProps(activeSprint.sprint_id)}
+                    />
                   )}
 
-                  {sprintsEnabled && plannedSprints.map(sprint => (
-                    <Box key={sprint.sprint_id} bg={panelBg} borderRadius="lg" p={3}>
-                      <HStack justify="space-between" mb={2}>
-                        <HStack>
-                          <Text fontWeight="bold" fontSize="sm">{sprint.name}</Text>
-                          <Badge borderRadius="full">{(sprintTasksById[sprint.sprint_id] || []).length}</Badge>
-                        </HStack>
-                        <HStack>
-                          <Tooltip label={activeSprint ? "Complete the active sprint first" : ""}>
-                            <Button size="xs" leftIcon={<FiPlay />} isDisabled={!!activeSprint} onClick={() => handleStartSprint(sprint.sprint_id)}>
-                              Start Sprint
-                            </Button>
-                          </Tooltip>
-                          <Menu>
-                            <MenuButton as={IconButton} icon={<FiMoreVertical />} size="xs" variant="ghost" aria-label="Sprint options" />
-                            <MenuList>
-                              <MenuItem icon={<FiTrash2 />} onClick={() => handleDeleteSprint(sprint.sprint_id)}>Delete Sprint</MenuItem>
-                            </MenuList>
-                          </Menu>
-                        </HStack>
-                      </HStack>
-                      {sprint.goal && <Text fontSize="xs" color="gray.500" mb={2}>Goal: {sprint.goal}</Text>}
-                      <VStack align="stretch" spacing={1}>
-                        {(sprintTasksById[sprint.sprint_id] || []).map(task => (
-                          <BacklogTaskRow
-                            key={task.task_id}
-                            task={task}
-                            epics={epics}
-                            sprintOptions={sprintOptionsForMove}
-                            onOpen={handleCardClick}
-                            onChangeEpic={handleChangeTaskEpic}
-                            onChangeSprint={handleChangeTaskSprint}
-                          />
-                        ))}
-                        {(sprintTasksById[sprint.sprint_id] || []).length === 0 && (
-                          <Text fontSize="xs" color="gray.400">No cards yet -- move some in from the backlog below.</Text>
-                        )}
-                      </VStack>
-                    </Box>
-                  ))}
+                  {sprintsEnabled && plannedSprints.map(sprint => {
+                    const sprintTasks = sprintTasksById[sprint.sprint_id] || [];
+                    return (
+                      <BacklogContainer
+                        key={sprint.sprint_id}
+                        title={sprint.name}
+                        subtitle={[formatSprintDates(sprint), sprint.goal && `Goal: ${sprint.goal}`].filter(Boolean).join(' · ')}
+                        tasks={sprintTasks.filter(isVisible)}
+                        totalCount={sprintTasks.length}
+                        emptyText="Plan a sprint by moving issues here from the backlog."
+                        actions={
+                          <>
+                            <Tooltip label={activeSprint ? "Complete the active sprint first" : ""}>
+                              <Button size="xs" leftIcon={<FiPlay />} isDisabled={!!activeSprint} onClick={() => openStartSprint(sprint)}>
+                                Start sprint
+                              </Button>
+                            </Tooltip>
+                            <Menu>
+                              <MenuButton as={IconButton} icon={<FiMoreVertical />} size="xs" variant="ghost" aria-label="Sprint options" />
+                              <MenuList>
+                                <MenuItem icon={<FiTrash2 />} onClick={() => handleDeleteSprint(sprint.sprint_id)}>Delete sprint</MenuItem>
+                              </MenuList>
+                            </Menu>
+                          </>
+                        }
+                        {...containerProps(sprint.sprint_id)}
+                      />
+                    );
+                  })}
 
-                  {sprintsEnabled && (
-                    <Button size="sm" leftIcon={<FiPlus />} alignSelf="flex-start" onClick={sprintModal.onOpen}>
-                      Create Sprint
-                    </Button>
-                  )}
-
-                  <Divider />
-
-                  <Box>
-                    <HStack mb={2}>
-                      <Text fontWeight="bold" fontSize="sm">Backlog</Text>
-                      <Badge borderRadius="full">{backlogTasks.length}</Badge>
-                    </HStack>
-                    <VStack align="stretch" spacing={1}>
-                      {backlogTasks.map(task => (
-                        <BacklogTaskRow
-                          key={task.task_id}
-                          task={task}
-                          epics={epics}
-                          sprintOptions={sprintOptionsForMove}
-                          onOpen={handleCardClick}
-                          onChangeEpic={handleChangeTaskEpic}
-                          onChangeSprint={handleChangeTaskSprint}
-                        />
-                      ))}
-                      {backlogTasks.length === 0 && <Text fontSize="xs" color="gray.400">Backlog is empty.</Text>}
-                    </VStack>
-                  </Box>
+                  <BacklogContainer
+                    title="Backlog"
+                    tasks={backlogTasks.filter(isVisible)}
+                    totalCount={backlogTasks.length}
+                    emptyText="Your backlog is empty."
+                    actions={sprintsEnabled && (
+                      <Button size="xs" leftIcon={<FiPlus />} onClick={openCreateSprint}>Create sprint</Button>
+                    )}
+                    {...containerProps(null)}
+                  />
                 </VStack>
               </TabPanel>
             </TabPanels>
@@ -694,16 +545,42 @@ export default function BoardDetailPage() {
           key={newCardStatus}
           disclosures={{
             isOpen: newCardDisclosure.isOpen,
-            onClose: () => { newCardDisclosure.onClose(); loadBoard(); },
+            onClose: () => { newCardDisclosure.onClose(); refresh(); },
           }}
-          defaultValues={{ status: newCardStatus, board_id: boardId }}
+          // While a sprint is running the board only shows that sprint's
+          // cards -- create into it, or the new card would land in the
+          // backlog and vanish from the column it was added to.
+          defaultValues={{
+            status: newCardStatus,
+            board_id: boardId,
+            ...(sprintsEnabled && activeSprint ? { sprint_id: activeSprint.sprint_id } : {}),
+          }}
         />
       )}
       <EditTaskDrawer
         currentTask={currentTask}
         setCurrentTask={setCurrentTask}
-        disclosures={editTaskDisclosure}
-        onTaskUpdate={handleTaskUpdate}
+        disclosures={{
+          isOpen: editTaskDisclosure.isOpen,
+          onClose: () => { editTaskDisclosure.onClose(); clearSelectedIssue(); },
+        }}
+        onTaskUpdate={refresh}
+      />
+
+      <StartSprintModal
+        isOpen={startSprintModal.isOpen}
+        onClose={startSprintModal.onClose}
+        sprint={sprintToStart}
+        issueCount={sprintToStart ? (sprintTasksById[sprintToStart.sprint_id] || []).length : 0}
+        onStart={handleStartSprint}
+      />
+      <CompleteSprintModal
+        isOpen={completeSprintModal.isOpen}
+        onClose={completeSprintModal.onClose}
+        sprint={activeSprint}
+        doneCount={doneInSprint}
+        openCount={boardTasks.length - doneInSprint}
+        onComplete={handleCompleteSprint}
       />
 
       <Modal isOpen={epicsModal.isOpen} onClose={epicsModal.onClose} size="lg">
@@ -740,8 +617,13 @@ export default function BoardDetailPage() {
                   {EPIC_COLORS.map(color => (
                     <Box
                       key={color}
-                      w="24px" h="24px" borderRadius="full" bg={color} cursor="pointer"
-                      border={newEpicColor === color ? "2px solid black" : "2px solid transparent"}
+                      as="button"
+                      type="button"
+                      aria-label={`Epic color ${color}`}
+                      aria-pressed={newEpicColor === color}
+                      w="24px" h="24px" borderRadius="full" bg={color}
+                      border={newEpicColor === color ? "2px solid" : "2px solid transparent"}
+                      borderColor={newEpicColor === color ? swatchBorder : 'transparent'}
                       onClick={() => setNewEpicColor(color)}
                     />
                   ))}

@@ -125,6 +125,16 @@ class TagDtoMapper:
 class TaskDtoMapper:
     """ Task Dto Mapper """
     @staticmethod
+    def ticket_key(task: Task) -> Optional[str]:
+        """"ENG-42" from the board's key, or the workspace's key for a task
+        that isn't on a board. None for unnumbered items (notes etc.)."""
+        if not task.task_number:
+            return None
+        owner = task.board if task.board_id else task.workspace
+        prefix = owner.key if owner else None
+        return f"{prefix}-{task.task_number}" if prefix else None
+
+    @staticmethod
     def map_to_task_dto_mapper(task: Task) -> TaskDto:
         return TaskDto(
             task_id=str(task.task_id),
@@ -160,7 +170,7 @@ class TaskDtoMapper:
             epic_id=str(task.epic_id) if task.epic_id else None,
             sprint_id=str(task.sprint_id) if task.sprint_id else None,
             task_number=task.task_number,
-            ticket_key=f"{task.board.key}-{task.task_number}" if task.board_id and task.task_number and task.board and task.board.key else None,
+            ticket_key=TaskDtoMapper.ticket_key(task),
             story_points=task.story_points,
             watchers=task.watchers,
             labels=task.labels,

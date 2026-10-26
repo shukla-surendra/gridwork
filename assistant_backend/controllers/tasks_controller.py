@@ -75,6 +75,26 @@ async def list_tasks(
         raise HTTPException(status_code=500, detail="Failed to list tasks")
 
 
+@router.get("/tasks/key/{ticket_key}", status_code=status.HTTP_200_OK)
+async def get_task_by_key(
+    workspace_id: str,
+    ticket_key: str,
+    user: dict = Depends(get_auth_details)
+):
+    """Get a single task by its Jira-style key, e.g. ENG-42"""
+    try:
+        return TaskHandler().get_task_by_key(
+            workspace_id=workspace_id,
+            ticket_key=ticket_key,
+            user_id=user.get("user_id")
+        )
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error getting task by key: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get task")
+
+
 @router.get("/tasks/{task_id}", status_code=status.HTTP_200_OK)
 async def get_task(
     workspace_id: str,

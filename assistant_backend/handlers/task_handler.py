@@ -2,11 +2,12 @@ from datetime import datetime
 from commands.task_cmd import TaskCommand, TaskDeleteCommand, TaskUpdateCommand
 from fastapi import HTTPException, status
 from constants import TaskType, TaskStatus
-from adapters.orm.models.pg_models import Task, Board, Activity
+from adapters.orm.models.pg_models import Task, Board, Workspace, Activity
 from dto.task_dto import TaskDtoMapper
 from config import logger
 from adapters.orm.models.database import get_db
 from sqlalchemy import text
+from utils.ticket_keys import generate_key, taken_keys, parse_ticket_key
 import traceback
 import re
 import uuid
@@ -17,25 +18,54 @@ class TaskHandler:
         self.db = next(get_db())
         logger.info("TaskHandler initialized")
 
-    def _assign_task_number(self, task: Task) -> None:
-        """Atomically hand out the next ticket number from the task's board
-        via a single UPDATE...RETURNING -- safe under concurrent creates on
-        the same board since the row lock serializes the increments."""
-        result = self.db.execute(
-            text("UPDATE boards SET next_task_number = next_task_number + 1 WHERE board_id = :bid RETURNING next_task_number"),
-            {"bid": str(task.board_id)},
+    # Not work items -- these never get a ticket number.
+    UNTICKETED_TYPES = (TaskType.NOTE.value, TaskType.QUICK_NOTE.value, TaskType.TIME_BLOCK.value)
+
+    def _is_ticketed(self, task: Task) -> bool:
+        return task.task_type not in self.UNTICKETED_TYPES
+
+    def _ensure_workspace_key(self, workspace_id) -> None:
+        """Give the workspace a ticket prefix the first time a boardless
+        task needs one. The conditional UPDATE means two concurrent first
+        creates can't both write a key -- the loser just reuses the winner's."""
+        workspace = self.db.query(Workspace).filter(Workspace.workspace_id == workspace_id).first()
+        if not workspace or workspace.key:
+            return
+        key = generate_key(workspace.name, taken_keys(self.db, workspace_id), fallback="TASK")
+        self.db.execute(
+            text("UPDATE workspaces SET key = :key WHERE workspace_id = :wid AND key IS NULL"),
+            {"key": key, "wid": str(workspace_id)},
         )
+        self.db.expire(workspace, ["key"])
+
+    def _assign_task_number(self, task: Task) -> None:
+        """Atomically hand out the next ticket number -- from the task's
+        board, or from its workspace when it has no board -- via a single
+        UPDATE...RETURNING, so concurrent creates never collide (the row
+        lock serializes the increments)."""
+        if task.board_id:
+            result = self.db.execute(
+                text("UPDATE boards SET next_task_number = next_task_number + 1 WHERE board_id = :bid RETURNING next_task_number"),
+                {"bid": str(task.board_id)},
+            )
+        else:
+            self._ensure_workspace_key(task.workspace_id)
+            result = self.db.execute(
+                text("UPDATE workspaces SET next_task_number = next_task_number + 1 WHERE workspace_id = :wid RETURNING next_task_number"),
+                {"wid": str(task.workspace_id)},
+            )
         new_next = result.scalar()
         if new_next is not None:
             task.task_number = new_next - 1
 
     def _ticket_key(self, task: Task):
-        if not task.board_id or not task.task_number:
+        if not task.task_number:
             return None
-        board = self.db.query(Board.key).filter(Board.board_id == task.board_id).first()
-        if not board or not board[0]:
-            return None
-        return f"{board[0]}-{task.task_number}"
+        if task.board_id:
+            prefix = self.db.query(Board.key).filter(Board.board_id == task.board_id).scalar()
+        else:
+            prefix = self.db.query(Workspace.key).filter(Workspace.workspace_id == task.workspace_id).scalar()
+        return f"{prefix}-{task.task_number}" if prefix else None
 
     def _log_activity(self, workspace_id, user_id, action, entity_type, entity_id, properties=None):
         if not user_id:
@@ -147,7 +177,7 @@ class TaskHandler:
             logger.debug(f"Created task object: {task}")
             self.db.add(task)
             self.db.flush()
-            if task.board_id:
+            if self._is_ticketed(task):
                 self._assign_task_number(task)
             # Notes/quick-notes aren't ticketed work items -- skip them so
             # the activity feed stays about actual tasks, not every scratch note.
@@ -229,7 +259,7 @@ class TaskHandler:
                     detail="Task not found"
                 )
 
-            had_no_board = task.board_id is None
+            old_board_id = task.board_id
             old_status = task.status
             old_assignee_id = task.assignee_id
             old_completed = task.completed
@@ -287,10 +317,13 @@ class TaskHandler:
             if task_cmd.public_access is not None:
                 task.public_access = task_cmd.public_access
 
-            # A card moved onto a board for the first time (e.g. dragged out
-            # of the boardless backlog) still needs a ticket number -- it
-            # never got one at creation since it had no board then.
-            if had_no_board and task.board_id:
+            # Re-key when the task changes board (incl. a boardless task
+            # moving onto one): its old number came from a different
+            # counter and could clash with an existing ticket there --
+            # Jira does the same when an issue moves between projects.
+            # Also covers a note converted into a work item.
+            board_changed = str(old_board_id or "") != str(task.board_id or "")
+            if self._is_ticketed(task) and (board_changed or not task.task_number):
                 self._assign_task_number(task)
 
             changes = {}
@@ -416,6 +449,36 @@ class TaskHandler:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error getting task: {str(e)}"
             )
+
+    def get_task_by_key(self, workspace_id: str, ticket_key: str, user_id: str):
+        """Resolve a Jira-style key ("ENG-42") to its task: the prefix is
+        either a board's key or the workspace's own key (boardless tasks)."""
+        parsed = parse_ticket_key(ticket_key)
+        if not parsed:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        prefix, number = parsed
+
+        query = self.db.query(Task).filter(
+            Task.workspace_id == workspace_id,
+            Task.user_id == user_id,
+            Task.task_number == number,
+            Task.is_deleted == False,
+        )
+        board_id = self.db.query(Board.board_id).filter(
+            Board.workspace_id == workspace_id,
+            Board.key == prefix,
+            Board.is_deleted == False,
+        ).scalar()
+        if board_id:
+            task = query.filter(Task.board_id == board_id).first()
+        elif self.db.query(Workspace.key).filter(Workspace.workspace_id == workspace_id).scalar() == prefix:
+            task = query.filter(Task.board_id.is_(None)).first()
+        else:
+            task = None
+
+        if not task:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        return TaskDtoMapper.map_to_task_dto_mapper(task)
 
     def get_task_by_slug(self, slug: str, user_id: str):
         """Get a task by its slug"""

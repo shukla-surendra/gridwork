@@ -22,7 +22,6 @@ import { useDispatch } from "react-redux";
 import { updateTask } from "../../../slices/tasks";
 import TaskDataService from "../../../services/taskservice";
 import { FaArrowLeft, FaSave, FaEye, FaEyeSlash, FaShare, FaDownload, FaFilePdf, FaFileWord, FaFileAlt, FaTags, FaFolder, FaEllipsisH, FaCopy, FaCheck } from "react-icons/fa";
-import { BiCommentDetail } from "react-icons/bi";
 import { BsGearFill, BsThreeDots } from "react-icons/bs";
 import { FiSearch, FiPlus, FiMoreHorizontal } from "react-icons/fi";
 import RichTextEditor from '../editor/RichTextEditor';
@@ -695,14 +694,6 @@ export default function EditNoteDrawer(props) {
                 </Badge>
               </HStack>
               <HStack spacing={2} position="absolute" right="4" zIndex={1}>
-                <Tooltip label="Comments" hasArrow>
-                  <IconButton
-                    icon={<Icon as={BiCommentDetail} />}
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Comments"
-                  />
-                </Tooltip>
                 <Menu>
                   <MenuButton
                     as={IconButton}

@@ -1,15 +1,9 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import SettingsService from "../services/settingsservice";
 
+// null until the real row loads -- it carries the settings_id every update needs.
 const initialState = {
-  settings: {
-    email_notifications: true,
-    task_reminders: true,
-    weekly_digest: false,
-    language: 'en',
-    timezone: 'UTC',
-    theme: 'light',
-  }
+  settings: null,
 };
 
 export const retrieveSettings = createAsyncThunk(

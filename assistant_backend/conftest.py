@@ -67,6 +67,16 @@ def signed_up_user(client):
     constraint, even though they all share one un-reset database for the
     whole session.
     """
+    return _sign_up(client)
+
+
+@pytest.fixture
+def other_user(client):
+    """A second, unrelated account -- for cross-workspace access tests."""
+    return _sign_up(client)
+
+
+def _sign_up(client):
     email = f"pytest-{uuid.uuid4()}@example.com"
     password = "TestPass123!"
 

@@ -5,6 +5,13 @@ from commands.task_cmd import TaskCommand, TaskDeleteCommand, TaskUpdateCommand
 from handlers.task_handler import TaskHandler
 from authorization.auth import get_auth_details
 from config import logger
+from handlers.workspace_handlers import WorkspaceHandler
+
+
+def _verify_workspace_access(workspace_id: str, user_id: str):
+    """Work items are shared workspace-wide (see TaskHandler._visible_to),
+    so membership of the workspace in the URL is what gates access."""
+    WorkspaceHandler().get_workspace(workspace_id, user_id)
 
 
 router = APIRouter(
@@ -25,6 +32,7 @@ async def create_tasks(
     user: dict = Depends(get_auth_details)
 ):
     """Create a new task in DynamoDB"""
+    _verify_workspace_access(workspace_id, user.get("user_id"))
     try:
         tasks_cmd.workspace_id = workspace_id
         tasks_cmd.user_id = user.get("user_id")
@@ -49,9 +57,11 @@ async def list_tasks(
     epic_id: str = None,
     skip: int = 0,
     page_size: int = 50,
-    priority: int = None
+    priority: str = None,
+    q: str = None
 ):
     """List tasks with filtering and pagination"""
+    _verify_workspace_access(workspace_id, user.get("user_id"))
     try:
         user_id = user.get("user_id")
         return TaskHandler().list_tasks(
@@ -66,7 +76,8 @@ async def list_tasks(
             priority=priority,
             sprint_id=sprint_id,
             backlog_only=backlog_only,
-            epic_id=epic_id
+            epic_id=epic_id,
+            q=q
         )
     except HTTPException as he:
         raise he
@@ -82,6 +93,7 @@ async def get_task_by_key(
     user: dict = Depends(get_auth_details)
 ):
     """Get a single task by its Jira-style key, e.g. ENG-42"""
+    _verify_workspace_access(workspace_id, user.get("user_id"))
     try:
         return TaskHandler().get_task_by_key(
             workspace_id=workspace_id,
@@ -102,6 +114,7 @@ async def get_task(
     user: dict = Depends(get_auth_details)
 ):
     """Get a single task by ID"""
+    _verify_workspace_access(workspace_id, user.get("user_id"))
     try:
         return TaskHandler().get_task(
             workspace_id=workspace_id,
@@ -122,6 +135,7 @@ async def get_post_by_slug(
     user: dict = Depends(get_auth_details)
 ):
     """Get a task by its slug"""
+    _verify_workspace_access(workspace_id, user.get("user_id"))
     try:
         return TaskHandler().get_task_by_slug(
             workspace_id=workspace_id,
@@ -143,6 +157,7 @@ async def update_task(
     user: dict = Depends(get_auth_details)
 ):
     """Update an existing task"""
+    _verify_workspace_access(workspace_id, user.get("user_id"))
     try:
         task_cmd.workspace_id = workspace_id
         task_cmd.task_id = task_id
@@ -162,6 +177,7 @@ async def delete_task(
     user: dict = Depends(get_auth_details)
 ):
     """Soft delete a task"""
+    _verify_workspace_access(workspace_id, user.get("user_id"))
     try:
         task_cmd = TaskDeleteCommand(
             task_id=task_id,

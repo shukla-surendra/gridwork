@@ -16,6 +16,12 @@ const update = (userId, data) => {
   return http.put(`/api/v1/users/${userId}`, data);
 };
 
+// Current password is required server-side -- a session token alone can't
+// change it.
+const changePassword = (currentPassword, newPassword) => {
+  return http.post("/api/v1/users/me/password", { current_password: currentPassword, new_password: newPassword });
+};
+
 const remove = (userId) => {
   return http.delete(`/api/v1/users/${userId}`);
 };
@@ -35,6 +41,7 @@ const uploadAvatar = (userId, file) => {
 };
 
 const UserService = {
+  changePassword,
   login, signup, me, update, remove, uploadAvatar
 };
 

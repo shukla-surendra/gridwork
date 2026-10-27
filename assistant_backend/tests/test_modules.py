@@ -22,7 +22,7 @@ def test_list_modules_shows_correct_defaults(client, signed_up_user):
     assert by_key["comments"] is True
     assert by_key["epics"] is True
     assert by_key["sprints"] is True
-    assert by_key["timeblocks"] is True
+    assert "timeblocks" not in by_key  # folded into Calendar
     assert by_key["task_links"] is True
     assert by_key["assistant"] is True
     assert by_key["tasks"] is True
@@ -82,7 +82,7 @@ def test_disabling_newly_adopted_modules_blocks_their_routes(client, signed_up_u
     representative GET/POST per module is enough since they all share the
     same require_module_enabled gate (or, for assistant, the equivalent
     manual check -- see controllers/assistant_controller.py). Tasks,
-    Boards, Calendar, and Timeblocks are NOT in this list -- they're
+    Boards, and Calendar are NOT in this list -- they're
     "nav-only" modules (modules/registry.py's NAV_ONLY_MODULES) whose API
     stays reachable regardless of the toggle; see
     test_nav_only_modules_stay_reachable_when_disabled below."""
@@ -124,7 +124,7 @@ def test_disabling_newly_adopted_modules_blocks_their_routes(client, signed_up_u
 
 
 def test_nav_only_modules_stay_reachable_when_disabled(client, signed_up_user):
-    """Tasks, Boards, Notes, Calendar, and Timeblocks are "nav-only"
+    """Tasks, Boards, Notes, and Calendar are "nav-only"
     toggles (modules/registry.py's NAV_ONLY_MODULES) -- disabling one
     only hides the frontend nav entry/page (assistant_web_next's
     FeatureDisabledPage + selectIsModuleEnabled), it must NOT 403 the
@@ -133,7 +133,7 @@ def test_nav_only_modules_stay_reachable_when_disabled(client, signed_up_user):
     workspace_id = signed_up_user["workspace_id"]
     headers = signed_up_user["headers"]
 
-    for module_key in ["tasks", "boards", "notes", "calendar", "timeblocks"]:
+    for module_key in ["tasks", "boards", "notes", "calendar"]:
         disabled = client.put(
             f"/api/v1/workspaces/{workspace_id}/modules/{module_key}",
             headers=headers,
@@ -141,7 +141,7 @@ def test_nav_only_modules_stay_reachable_when_disabled(client, signed_up_user):
         )
         assert disabled.status_code == status.HTTP_200_OK, disabled.text
 
-    # Tasks (and the Timeblock/Notes features built on top of it) stay
+    # Tasks (and the Calendar/Notes features built on top of it) stay
     # fully functional even with every one of those toggles off.
     created = client.post(
         f"/api/v1/workspaces/{workspace_id}/tasks",

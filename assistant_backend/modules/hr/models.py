@@ -33,8 +33,8 @@ class Employee(Base):
     # JSONB-list-of-items shape Task.checklist already uses.
     onboarding_checklist = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     user = relationship("User", foreign_keys=[user_id])
     manager = relationship("Employee", remote_side=[employee_id], backref="direct_reports")
@@ -55,8 +55,8 @@ class LeaveRequest(Base):
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("hr_employees.employee_id", ondelete="SET NULL"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     review_note = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     employee = relationship("Employee", foreign_keys=[employee_id])
     reviewer = relationship("Employee", foreign_keys=[reviewed_by])
@@ -70,5 +70,5 @@ class OnboardingTemplate(Base):
     name = Column(String, nullable=False)
     items = Column(JSONB, nullable=True)  # ["Set up laptop", "Sign NDA", ...]
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))

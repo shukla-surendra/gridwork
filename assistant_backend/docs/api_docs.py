@@ -13,7 +13,6 @@ def custom_openapi(app: FastAPI):
         
         - Task Management
         - Board Management
-        - Time Block Management
         - User Settings
         - Page Management
         - Database Operations
@@ -94,7 +93,6 @@ def custom_openapi(app: FastAPI):
     openapi_schema["tags"] = [
         {"name": "tasks", "description": "Task management operations"},
         {"name": "boards", "description": "Board management operations"},
-        {"name": "timeblocks", "description": "Time block management operations"},
         {"name": "settings", "description": "User settings operations"},
         {"name": "pages", "description": "Page management operations"},
         {"name": "database", "description": "Database operations"},

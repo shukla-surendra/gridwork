@@ -254,19 +254,22 @@ export default function EditTaskDrawer(props) {
     setCurrentTask({ ...currentTask, [name]: value });
   };
 
-  const updateContent = async () => {
+  const updateContent = async (changes = {}, successMessage = "Task updated successfully") => {
+    const task = { ...currentTask, ...changes };
     setLoading(true);
     try {
-      await dispatch(updateTask({ task_id: currentTask.task_id, data: currentTask })).unwrap();
+      // null means "leave unchanged" to the API; "" clears the assignee.
+      await dispatch(updateTask({ task_id: task.task_id, data: { ...task, assignee_id: task.assignee_id || '' } })).unwrap();
+      setCurrentTask(task);
       toast({
         title: "Success",
-        description: "Task updated successfully",
+        description: successMessage,
         status: "success",
         duration: 2000,
         isClosable: true,
       });
       if (onTaskUpdate) {
-        onTaskUpdate(currentTask);
+        onTaskUpdate(task);
       }
     } catch (error) {
       toast({
@@ -393,7 +396,12 @@ export default function EditTaskDrawer(props) {
                     Share (copy link)
                   </MenuItem>
                   <MenuDivider />
-                  <MenuItem icon={<Icon as={FaCheckCircle} />} py={2}>
+                  <MenuItem
+                    icon={<Icon as={FaCheckCircle} />}
+                    py={2}
+                    isDisabled={currentTask?.status === 'done'}
+                    onClick={() => updateContent({ status: 'done' }, "Marked as done")}
+                  >
                     Mark as Complete
                   </MenuItem>
                 </MenuList>
@@ -915,7 +923,7 @@ export default function EditTaskDrawer(props) {
               </Button>
               <Button
                 colorScheme="blue"
-                onClick={updateContent}
+                onClick={() => updateContent()}
                 isLoading={loading}
                 leftIcon={<Icon as={FaSave} />}
                 size="md"

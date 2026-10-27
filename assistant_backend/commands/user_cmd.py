@@ -21,7 +21,13 @@ class UserUpdateCommand(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     bio: Optional[str] = None
-    password: Optional[str] = None
+    # No password here -- changing it goes through ChangePasswordCommand,
+    # which requires the current password.
+
+
+class ChangePasswordCommand(BaseModel):
+    current_password: str
+    new_password: str
 
 class LoginCommand(BaseModel):
     email: str

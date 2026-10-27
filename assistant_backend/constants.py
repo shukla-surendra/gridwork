@@ -40,6 +40,13 @@ class TaskType(Enum):
     CUSTOM = "custom"                # User-defined or unclassified type
 
 
+# Personal items: private to their author.
+PERSONAL_TASK_TYPES = (TaskType.NOTE.value, TaskType.QUICK_NOTE.value, TaskType.TIME_BLOCK.value)
+# Never given a Jira-style key: personal items, plus calendar events
+# (meetings are shared with the workspace but aren't work items).
+UNTICKETED_TASK_TYPES = PERSONAL_TASK_TYPES + (TaskType.MEETING.value,)
+
+
 
 class UserRoles(Enum):
     ADMIN = "admin"

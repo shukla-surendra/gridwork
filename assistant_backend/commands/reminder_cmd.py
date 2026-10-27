@@ -28,3 +28,4 @@ class ReminderUpdateCommand(BaseModel):
 class ReminderDeleteCommand(BaseModel):
     reminder_id: str
     workspace_id: str
+    user_id: str

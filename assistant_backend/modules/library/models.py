@@ -15,8 +15,8 @@ class Seat(Base):
     section = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)  # false = under maintenance / decommissioned, not bookable
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
 
 class Shift(Base):
@@ -34,8 +34,8 @@ class Shift(Base):
     end_time = Column(Time, nullable=True)
     is_full_day = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
 
 class Member(Base):
@@ -50,8 +50,8 @@ class Member(Base):
     status = Column(String, nullable=False, default="active")  # active | inactive
     notes = Column(String, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
 
 class Booking(Base):
@@ -72,8 +72,8 @@ class Booking(Base):
     fee_amount = Column(Numeric(12, 2), nullable=True)
     payment_status = Column(String, nullable=False, default="pending")  # paid | pending | overdue
     status = Column(String, nullable=False, default="active")  # active | cancelled | expired
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     member = relationship("Member")
     seat = relationship("Seat")
@@ -96,8 +96,8 @@ class Attendance(Base):
     status = Column(String, nullable=False)  # present | absent
     check_in_at = Column(DateTime, nullable=True)
     check_out_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     booking = relationship("Booking")
     member = relationship("Member")

@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, constr, validator
 import phonenumbers
 from constants import UserStatus, UserRoles, UserType
+from utils.passwords import validate_password_strength
 
 class UserValidator(BaseModel):
     email: EmailStr
@@ -26,15 +27,7 @@ class UserValidator(BaseModel):
 
     @validator('password')
     def validate_password(cls, v):
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one number')
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('Password must contain at least one special character')
-        return v
+        return validate_password_strength(v)
 
     @validator('mobile_number')
     def validate_mobile_number(cls, v, values):

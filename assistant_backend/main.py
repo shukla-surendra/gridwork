@@ -84,7 +84,7 @@ try:
     # Notifications, Templates, Activity, Comments, Epics, Sprints, Task
     # Links, AI Assistant), and "nav-only" modules whose API is
     # deliberately left ungated because they're core/foundational (Tasks,
-    # Boards, Notes, Calendar, Time Blocking -- see NAV_ONLY_MODULES in
+    # Boards, Notes, Calendar -- see NAV_ONLY_MODULES in
     # modules/registry.py for why). Each entry in ALL_MODULES brings its
     # own router; adding a new module means editing modules/registry.py,
     # not this file.

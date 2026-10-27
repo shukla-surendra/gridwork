@@ -25,8 +25,8 @@ class Company(Base):
     description = Column(Text, nullable=True)
     tags = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     workspace = relationship("Workspace")
     contacts = relationship("Contact", back_populates="company_ref")
@@ -52,8 +52,8 @@ class Contact(Base):
     notes = Column(Text, nullable=True)
     properties = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     workspace = relationship("Workspace", back_populates="contacts")
     deals = relationship("Deal", back_populates="contact")
@@ -82,8 +82,8 @@ class Deal(Base):
     # constraint on purpose. See DealBase.quote_id in commands.py for why.
     quote_id = Column(UUID(as_uuid=True), nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     workspace = relationship("Workspace", back_populates="deals")
     contact = relationship("Contact", back_populates="deals")
@@ -105,8 +105,8 @@ class ContactActivity(Base):
     status = Column(String, nullable=False, default="pending")
     properties = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     workspace = relationship("Workspace", back_populates="contact_activities")
     contact = relationship("Contact", back_populates="activities")
@@ -126,8 +126,8 @@ class DealActivity(Base):
     old_stage = Column(String, nullable=True)
     new_stage = Column(String, nullable=True)
     properties = Column(JSONB, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     workspace = relationship("Workspace", back_populates="deal_activities")
     deal = relationship("Deal", back_populates="activities")
@@ -161,8 +161,8 @@ class Lead(Base):
     converted_company_id = Column(UUID(as_uuid=True), ForeignKey("companies.company_id"), nullable=True)
     converted_deal_id = Column(UUID(as_uuid=True), ForeignKey("deals.deal_id"), nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     workspace = relationship("Workspace")
 
@@ -182,8 +182,8 @@ class LeadActivity(Base):
     status = Column(String, nullable=False, default="pending")
     properties = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     lead = relationship("Lead")
     user = relationship("User")

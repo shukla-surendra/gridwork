@@ -6,7 +6,7 @@ import {
   Badge, Tooltip, useToast, IconButton, VStack, HStack, Divider, Tag,
   TagLabel, TagCloseButton, Wrap, Select, InputGroup, InputLeftElement,
   InputRightElement, Spinner, Flex, Popover, PopoverTrigger, PopoverContent,
-  PopoverBody, PopoverArrow, Portal, MenuDivider, FormLabel,
+  PopoverBody, PopoverArrow, Portal, MenuDivider, MenuGroup, FormLabel,
   Avatar, Progress
 } from "@chakra-ui/react";
 import { useDispatch, useSelector } from "react-redux";
@@ -428,13 +428,13 @@ export default function NewTaskDrawer(props) {
                   aria-label="More options"
                 />
                 <MenuList shadow="lg" py={2}>
-                  <MenuItem icon={<Icon as={FaShare} />} py={2}>
-                    Share
-                  </MenuItem>
-                  <MenuDivider />
-                  <MenuItem icon={<Icon as={TASK_TEMPLATES[0].icon} />} py={2}>
-                    Apply Template
-                  </MenuItem>
+                  <MenuGroup title="Apply template">
+                    {TASK_TEMPLATES.map(template => (
+                      <MenuItem key={template.id} py={2} onClick={() => handleApplyTemplate(template)}>
+                        {template.name}
+                      </MenuItem>
+                    ))}
+                  </MenuGroup>
                 </MenuList>
               </Menu>
             </HStack>

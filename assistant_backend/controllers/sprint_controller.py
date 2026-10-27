@@ -4,6 +4,9 @@ from starlette.responses import Response
 from modules.access import require_module_enabled
 from handlers.sprint_handler import SprintHandler
 from handlers.workspace_handlers import WorkspaceHandler
+from adapters.orm.models.database import SessionLocal
+from sqlalchemy.exc import DataError
+from adapters.orm.models.pg_models import Board
 from commands.sprint_cmd import SprintCommand, SprintUpdateCommand
 from dto.sprint_dto import SprintDto, SprintDtoMapper
 from config import logger
@@ -25,13 +28,36 @@ router = APIRouter(
 gate = require_module_enabled("sprints", default_enabled=True)
 
 
-def _verify_workspace_access(workspace_id: str, user_id: str):
+def _verify_workspace_access(workspace_id: str, board_id: str, user_id: str):
+    """Membership of the URL's workspace AND that the board in the URL
+    belongs to it -- without the second check, a member of any workspace
+    could reach another workspace's sprints just by putting its
+    board_id under their own workspace_id."""
     WorkspaceHandler().get_workspace(workspace_id, user_id)
+    db = SessionLocal()
+    try:
+        board_ok = db.query(Board.board_id).filter(
+            Board.board_id == board_id,
+            Board.workspace_id == workspace_id,
+            Board.is_deleted == False,
+        ).first()
+    except (ValueError, DataError):
+        board_ok = None  # malformed UUID in the URL
+    finally:
+        db.close()
+    if not board_ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+
+
+def _verify_sprint_in_board(sprint_id: str, board_id: str):
+    sprint = SprintHandler().get_sprint(sprint_id)
+    if str(sprint.board_id) != str(board_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
 
 
 @router.post("/", response_model=SprintDto, status_code=status.HTTP_201_CREATED)
 async def create_sprint(workspace_id: str, board_id: str, command: SprintCommand, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
     command.workspace_id = workspace_id
     command.board_id = board_id
     try:
@@ -46,7 +72,7 @@ async def create_sprint(workspace_id: str, board_id: str, command: SprintCommand
 
 @router.get("/", response_model=List[SprintDto])
 async def list_sprints(workspace_id: str, board_id: str, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
     try:
         sprints = SprintHandler().list_sprints(board_id)
         return [SprintDtoMapper.map_to_sprint_dto(sprint) for sprint in sprints]
@@ -59,7 +85,7 @@ async def list_sprints(workspace_id: str, board_id: str, user: dict = Depends(ga
 
 @router.get("/{sprint_id}", response_model=SprintDto)
 async def get_sprint(workspace_id: str, board_id: str, sprint_id: str, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
     try:
         sprint = SprintHandler().get_sprint(sprint_id)
         if str(sprint.board_id) != str(board_id):
@@ -74,7 +100,8 @@ async def get_sprint(workspace_id: str, board_id: str, sprint_id: str, user: dic
 
 @router.put("/{sprint_id}", response_model=SprintDto)
 async def update_sprint(workspace_id: str, board_id: str, sprint_id: str, command: SprintUpdateCommand, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
+    _verify_sprint_in_board(sprint_id, board_id)
     command.sprint_id = sprint_id
     try:
         sprint = SprintHandler().update_sprint(command)
@@ -88,7 +115,8 @@ async def update_sprint(workspace_id: str, board_id: str, sprint_id: str, comman
 
 @router.post("/{sprint_id}/start", response_model=SprintDto)
 async def start_sprint(workspace_id: str, board_id: str, sprint_id: str, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
+    _verify_sprint_in_board(sprint_id, board_id)
     try:
         sprint = SprintHandler().start_sprint(sprint_id)
         return SprintDtoMapper.map_to_sprint_dto(sprint)
@@ -101,7 +129,8 @@ async def start_sprint(workspace_id: str, board_id: str, sprint_id: str, user: d
 
 @router.post("/{sprint_id}/complete", response_model=SprintDto)
 async def complete_sprint(workspace_id: str, board_id: str, sprint_id: str, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
+    _verify_sprint_in_board(sprint_id, board_id)
     try:
         sprint = SprintHandler().complete_sprint(sprint_id)
         return SprintDtoMapper.map_to_sprint_dto(sprint)
@@ -114,7 +143,7 @@ async def complete_sprint(workspace_id: str, board_id: str, sprint_id: str, user
 
 @router.delete("/{sprint_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sprint(workspace_id: str, board_id: str, sprint_id: str, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
     try:
         SprintHandler().delete_sprint(sprint_id, board_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)

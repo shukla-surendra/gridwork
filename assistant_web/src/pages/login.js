@@ -16,11 +16,8 @@ import {
   Flex,
   Image,
   Icon,
-  Divider,
   useToast,
-  Checkbox,
   Link,
-  HStack,
   IconButton,
   Tooltip
 } from '@chakra-ui/react';
@@ -31,11 +28,6 @@ import {
   FiMail,
   FiArrowLeft
 } from 'react-icons/fi';
-import {
-  FaGoogle,
-  FaGithub,
-  FaTwitter
-} from 'react-icons/fa';
 import Head from 'next/head';
 import NextLink from 'next/link';
 import { useRouter } from 'next/router';
@@ -46,7 +38,6 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isDemoLoading, setIsDemoLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -148,39 +139,6 @@ export default function Login() {
                 <Text color="gray.500">Sign in to continue to your account</Text>
               </Box>
 
-              {/* Social Login Buttons */}
-              <HStack spacing={4} justify="center">
-                <Tooltip label="Sign in with Google">
-                  <IconButton
-                    icon={<FaGoogle />}
-                    aria-label="Google login"
-                    variant="outline"
-                    size="lg"
-                    isRound
-                  />
-                </Tooltip>
-                <Tooltip label="Sign in with GitHub">
-                  <IconButton
-                    icon={<FaGithub />}
-                    aria-label="GitHub login"
-                    variant="outline"
-                    size="lg"
-                    isRound
-                  />
-                </Tooltip>
-                <Tooltip label="Sign in with Twitter">
-                  <IconButton
-                    icon={<FaTwitter />}
-                    aria-label="Twitter login"
-                    variant="outline"
-                    size="lg"
-                    isRound
-                  />
-                </Tooltip>
-              </HStack>
-
-              <Divider />
-
               {/* Login Form */}
               <form onSubmit={handleSubmit}>
                 <VStack spacing={4}>
@@ -225,18 +183,6 @@ export default function Login() {
                       </InputRightElement>
                     </InputGroup>
                   </FormControl>
-
-                  <Flex justify="space-between" w="full">
-                    <Checkbox
-                      isChecked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                    >
-                      Remember me
-                    </Checkbox>
-                    <Link color="blue.500" href="#">
-                      Forgot password?
-                    </Link>
-                  </Flex>
 
                   <Button
                     type="submit"

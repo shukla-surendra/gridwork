@@ -14,10 +14,6 @@ const getAllQuickNotes = () => {
   return http.get(`/api/v1/workspaces/${ConfigService.getDefaultWorkspace().workspace_id}/tasks?order=desc&task_type=quick_note`);
 };
 
-const getAllTimeBlocks = () => {
-  return http.get(`/api/v1/workspaces/${ConfigService.getDefaultWorkspace().workspace_id}/tasks?order=desc&task_type=time_block`);
-};
-
 // No task_type filter -- a board's cards can be any type. page_size=200 is
 // a pragmatic cap, not real pagination; fine for a single board's cards.
 const getByBoard = (boardId) => {
@@ -79,6 +75,11 @@ const getAllForLinking = () => {
   return http.get(`/api/v1/workspaces/${ConfigService.getDefaultWorkspace().workspace_id}/tasks?page_size=200`);
 };
 
+// Server-side title / ticket-key search across everything the caller can see.
+const search = (q, limit = 8) => {
+  return http.get(`/api/v1/workspaces/${ConfigService.getDefaultWorkspace().workspace_id}/tasks`, { params: { q, page_size: limit } });
+};
+
 const getPublicNote = task_id => {
   // Use axios for public access without authentication
   return axios.get(`${getBackendUrl()}/api/v1/public/notes/${task_id}`);
@@ -93,8 +94,8 @@ const TaskService = {
   remove,
   removeAll,
   getAllForLinking,
+  search,
   getAllQuickNotes,
-  getAllTimeBlocks,
   getByBoard,
   getBacklog,
   getBySprint,

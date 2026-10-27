@@ -31,10 +31,10 @@ Three kinds of entries live here:
    first "adopted" feature actually migrated into one), which is why
    ADOPTED_MODULES below is shorter than this docstring's feature list.
 
-3. "Nav-only" modules (Tasks, Boards, Notes, Calendar, Time Blocking --
+3. "Nav-only" modules (Tasks, Boards, Notes, Calendar --
    NAV_ONLY_MODULES below) whose routes are deliberately left ungated.
    See the comment above NAV_ONLY_MODULES for why: they're core/
-   foundational data (or, for Notes/Time Blocking, a thin layer over it),
+   foundational data (or, for Notes, a thin layer over it),
    and hard-gating them the way ADOPTED_MODULES is gated would cascade
    into breaking most of the rest of the app for that workspace. The
    toggle for these is enforced client-side only (FeatureDisabledPage.js).
@@ -56,11 +56,11 @@ from controllers.activity_controller import activity_router
 from controllers.comment_controller import comment_router
 from controllers.epic_controller import epic_router
 from controllers.sprint_controller import sprint_router
-from controllers.timeblock_controller import timeblock_router
 from controllers.task_link_controller import task_link_router
 from controllers.assistant_controller import assistant_router
 from controllers.tasks_controller import tasks_router
 from controllers.board_controller import board_router
+from controllers.calendar_controller import calendar_router
 from .manifest import ModuleManifest
 
 logger = logging.getLogger(__name__)
@@ -86,25 +86,22 @@ ADOPTED_MODULES = [
     ModuleManifest(key="assistant", name="AI Assistant", description="Natural-language workspace commands.", icon="cpu", router=assistant_router, default_enabled=True),
 ]
 
-# Calendar and Notes have no dedicated backend routes of their own --
-# Calendar's frontend page is currently a local-state stub not wired to
-# any API, and Notes is just Tasks filtered by task_type=NOTE through the
-# core /tasks endpoint (see services/taskservice.js's getAllNotes/
-# retrieveNotes). These empty routers exist only so each has something to
-# satisfy ModuleManifest.router and show up in GET /modules like every
-# other entry.
-_calendar_router = APIRouter()
+# Notes has no dedicated backend routes of its own -- it's just Tasks
+# filtered by task_type=NOTE through the core /tasks endpoint (see
+# services/taskservice.js's getAllNotes/retrieveNotes). This empty router
+# exists only so it has something to satisfy ModuleManifest.router and
+# show up in GET /modules like every other entry.
 _notes_router = APIRouter()
 
-# Tasks, Boards, Notes, Calendar, and Time Blocking are "nav-only"
+# Tasks, Boards, Notes, and Calendar are "nav-only"
 # toggles: their routes are deliberately NOT wrapped in
 # require_module_enabled, unlike everything in ADOPTED_MODULES above.
 # Tasks and Boards are this app's foundational data model -- Notes and
-# Time Blocking are just Tasks with a different task_type, board cards
+# calendar events/focus blocks are just Tasks with a different task_type, board cards
 # are Tasks, and Comments/Epics/Sprints/Task Links all attach to a Task
 # or Board. Hard-gating the API the way Inventory/CRM/etc. are gated
 # would cascade: disabling "Tasks" for a workspace would break Notes,
-# Time Blocking, Comments, Epics, Sprints, and Task Links all at once.
+# the Calendar, Comments, Epics, Sprints, and Task Links all at once.
 # Instead, the toggle here only controls whether the frontend shows the
 # nav entry and renders the page (see FeatureDisabledPage.js) -- the API
 # stays reachable so nothing downstream breaks. Don't "fix" these by
@@ -114,8 +111,7 @@ NAV_ONLY_MODULES = [
     ModuleManifest(key="tasks", name="Tasks", description="Task list and kanban view.", icon="check-square", router=tasks_router, default_enabled=True),
     ModuleManifest(key="boards", name="Boards", description="Kanban boards for organizing tasks.", icon="kanban", router=board_router, default_enabled=True),
     ModuleManifest(key="notes", name="Notes", description="Freeform notes (tasks of type NOTE).", icon="book", router=_notes_router, default_enabled=True),
-    ModuleManifest(key="calendar", name="Calendar", description="Calendar view of tasks and events.", icon="calendar", router=_calendar_router, default_enabled=True),
-    ModuleManifest(key="timeblocks", name="Time Blocking", description="Calendar time blocks for tasks.", icon="clock", router=timeblock_router, default_enabled=True),
+    ModuleManifest(key="calendar", name="Calendar", description="Team events, private focus blocks, due dates, reminders and sprints.", icon="calendar", router=calendar_router, default_enabled=True),
 ]
 
 

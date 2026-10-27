@@ -32,29 +32,17 @@ import {
   deleteNotification,
   markAllNotificationsRead,
 } from '../../slices/notifications';
-
-const getTypeColor = (type) => {
-  switch (type) {
-    case 'task_assigned':
-      return 'blue';
-    case 'comment_added':
-      return 'yellow';
-    case 'meeting':
-      return 'purple';
-    case 'deadline':
-      return 'red';
-    default:
-      return 'gray';
-  }
-};
+import { NOTIFICATION_TYPES, notificationMeta, notificationHref, asUtc } from '../../utils/notificationMeta';
+import { timeAgo, formatLocalDateTime } from '../../utils/locale';
 
 const NotificationsPage = () => {
   const router = useRouter();
   const navigate = (path) => router.push(path);
   const dispatch = useDispatch();
   const [isMenuCollapsed, setIsMenuCollapsed] = useState(false);
-  const { notifications, loading } = useSelector((state) => state.notifications);
+  const { notifications, loading, loaded } = useSelector((state) => state.notifications);
   const [filter, setFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const pageBg = useColorModeValue('gray.50', 'gray.900');
@@ -68,10 +56,19 @@ const NotificationsPage = () => {
 
   const filteredNotifications = notifications.filter((n) => {
     const matchesFilter = filter === 'all' || (filter === 'unread' && !n.is_read) || (filter === 'read' && n.is_read);
+    const matchesType = typeFilter === 'all' || n.type === typeFilter;
     const q = searchQuery.toLowerCase();
-    const matchesSearch = n.title.toLowerCase().includes(q) || n.message.toLowerCase().includes(q);
-    return matchesFilter && matchesSearch;
+    const matchesSearch = (n.title || '').toLowerCase().includes(q) || (n.message || '').toLowerCase().includes(q);
+    return matchesFilter && matchesType && matchesSearch;
   });
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  const open = (n) => {
+    if (!n.is_read) dispatch(markNotificationRead(n.notification_id));
+    const href = notificationHref(n);
+    if (href) navigate(href);
+  };
 
   return (
     <Box minH="100vh" bg={pageBg}>
@@ -82,11 +79,11 @@ const NotificationsPage = () => {
           <VStack spacing={4} align="stretch">
             <Flex justify="space-between" align="center">
               <HStack spacing={3}>
-                <IconButton icon={<FiArrowLeft />} variant="ghost" size="sm" onClick={() => navigate(-1)} aria-label="Go back" />
+                <IconButton icon={<FiArrowLeft />} variant="ghost" size="sm" onClick={() => router.back()} aria-label="Go back" />
                 <Heading size="lg">Notifications</Heading>
               </HStack>
               <HStack spacing={2}>
-                <Button leftIcon={<FiCheck />} onClick={() => dispatch(markAllNotificationsRead())} size="sm" variant="outline">
+                <Button leftIcon={<FiCheck />} onClick={() => dispatch(markAllNotificationsRead())} size="sm" variant="outline" isDisabled={!unreadCount}>
                   Mark all as read
                 </Button>
               </HStack>
@@ -98,6 +95,12 @@ const NotificationsPage = () => {
                 <option value="unread">Unread</option>
                 <option value="read">Read</option>
               </Select>
+              <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} w={{ base: 'full', md: '200px' }}>
+                <option value="all">All types</option>
+                {Object.entries(NOTIFICATION_TYPES).map(([type, meta]) => (
+                  <option key={type} value={type}>{meta.label}</option>
+                ))}
+              </Select>
               <InputGroup w={{ base: 'full', md: '300px' }}>
                 <InputLeftElement pointerEvents="none">
                   <FiSearch color="gray.300" />
@@ -106,9 +109,9 @@ const NotificationsPage = () => {
               </InputGroup>
             </Flex>
 
-            {loading && <Center py={16}><Spinner /></Center>}
+            {loading && !loaded && <Center py={16}><Spinner /></Center>}
 
-            {!loading && (
+            {loaded && (
               <VStack spacing={3} align="stretch">
                 {filteredNotifications.length === 0 ? (
                   <Box p={8} textAlign="center" bg={bgColor} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
@@ -125,19 +128,25 @@ const NotificationsPage = () => {
                       borderWidth="1px"
                       borderColor={borderColor}
                       opacity={n.is_read ? 0.8 : 1}
+                      cursor={notificationHref(n) ? 'pointer' : 'default'}
+                      _hover={{ borderColor: 'blue.300' }}
+                      onClick={() => open(n)}
                     >
                       <Flex justify="space-between" align="start">
                         <VStack align="start" spacing={1}>
                           <HStack spacing={2}>
-                            <Badge colorScheme={getTypeColor(n.type)}>{n.type}</Badge>
+                            <Badge colorScheme={notificationMeta(n.type).color}>{notificationMeta(n.type).label}</Badge>
                             {!n.is_read && <Badge colorScheme="blue">New</Badge>}
+                            <Text fontSize="xs" color="gray.500" title={formatLocalDateTime(asUtc(n.created_at))}>
+                              {timeAgo(asUtc(n.created_at))}
+                            </Text>
                           </HStack>
                           <Heading size="sm">{n.title}</Heading>
                           <Text color="gray.600" fontSize="sm">{n.message}</Text>
                         </VStack>
                         <Menu>
-                          <MenuButton as={IconButton} icon={<FiMoreVertical />} variant="ghost" size="sm" />
-                          <MenuList>
+                          <MenuButton as={IconButton} icon={<FiMoreVertical />} variant="ghost" size="sm" aria-label="Actions" onClick={(e) => e.stopPropagation()} />
+                          <MenuList onClick={(e) => e.stopPropagation()}>
                             {!n.is_read && (
                               <MenuItem icon={<FiCheck />} onClick={() => dispatch(markNotificationRead(n.notification_id))}>
                                 Mark as read

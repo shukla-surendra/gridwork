@@ -4,6 +4,9 @@ from starlette.responses import Response
 from modules.access import require_module_enabled
 from handlers.epic_handler import EpicHandler
 from handlers.workspace_handlers import WorkspaceHandler
+from adapters.orm.models.database import SessionLocal
+from sqlalchemy.exc import DataError
+from adapters.orm.models.pg_models import Board
 from commands.epic_cmd import EpicCommand, EpicUpdateCommand
 from dto.epic_dto import EpicDto, EpicDtoMapper
 from config import logger
@@ -25,13 +28,36 @@ router = APIRouter(
 gate = require_module_enabled("epics", default_enabled=True)
 
 
-def _verify_workspace_access(workspace_id: str, user_id: str):
+def _verify_workspace_access(workspace_id: str, board_id: str, user_id: str):
+    """Membership of the URL's workspace AND that the board in the URL
+    belongs to it -- without the second check, a member of any workspace
+    could reach another workspace's epics just by putting its
+    board_id under their own workspace_id."""
     WorkspaceHandler().get_workspace(workspace_id, user_id)
+    db = SessionLocal()
+    try:
+        board_ok = db.query(Board.board_id).filter(
+            Board.board_id == board_id,
+            Board.workspace_id == workspace_id,
+            Board.is_deleted == False,
+        ).first()
+    except (ValueError, DataError):
+        board_ok = None  # malformed UUID in the URL
+    finally:
+        db.close()
+    if not board_ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+
+
+def _verify_epic_in_board(epic_id: str, board_id: str):
+    epic = EpicHandler().get_epic(epic_id)
+    if str(epic.board_id) != str(board_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Epic not found")
 
 
 @router.post("/", response_model=EpicDto, status_code=status.HTTP_201_CREATED)
 async def create_epic(workspace_id: str, board_id: str, command: EpicCommand, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
     command.workspace_id = workspace_id
     command.board_id = board_id
     try:
@@ -46,7 +72,7 @@ async def create_epic(workspace_id: str, board_id: str, command: EpicCommand, us
 
 @router.get("/", response_model=List[EpicDto])
 async def list_epics(workspace_id: str, board_id: str, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
     try:
         epics = EpicHandler().list_epics(board_id)
         return [EpicDtoMapper.map_to_epic_dto(epic) for epic in epics]
@@ -59,7 +85,7 @@ async def list_epics(workspace_id: str, board_id: str, user: dict = Depends(gate
 
 @router.get("/{epic_id}", response_model=EpicDto)
 async def get_epic(workspace_id: str, board_id: str, epic_id: str, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
     try:
         epic = EpicHandler().get_epic(epic_id)
         if str(epic.board_id) != str(board_id):
@@ -74,7 +100,8 @@ async def get_epic(workspace_id: str, board_id: str, epic_id: str, user: dict = 
 
 @router.put("/{epic_id}", response_model=EpicDto)
 async def update_epic(workspace_id: str, board_id: str, epic_id: str, command: EpicUpdateCommand, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
+    _verify_epic_in_board(epic_id, board_id)
     command.epic_id = epic_id
     try:
         epic = EpicHandler().update_epic(command)
@@ -88,7 +115,7 @@ async def update_epic(workspace_id: str, board_id: str, epic_id: str, command: E
 
 @router.delete("/{epic_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_epic(workspace_id: str, board_id: str, epic_id: str, user: dict = Depends(gate)):
-    _verify_workspace_access(workspace_id, user.get("user_id"))
+    _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
     try:
         EpicHandler().delete_epic(epic_id, board_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)

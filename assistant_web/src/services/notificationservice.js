@@ -16,10 +16,16 @@ const remove = (notificationId) => {
   return http.delete(`/api/v1/workspaces/${workspaceId}/notifications/${notificationId}`);
 };
 
+const markAllRead = () => {
+  const workspaceId = ConfigService.getDefaultWorkspace().workspace_id;
+  return http.post(`/api/v1/workspaces/${workspaceId}/notifications/read-all`);
+};
+
 const NotificationService = {
   getAll,
   update,
   remove,
+  markAllRead,
 };
 
 export default NotificationService;

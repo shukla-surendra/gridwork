@@ -1,13 +1,14 @@
 from datetime import datetime
 from commands.task_cmd import TaskCommand, TaskDeleteCommand, TaskUpdateCommand
 from fastapi import HTTPException, status
-from constants import TaskType, TaskStatus
-from adapters.orm.models.pg_models import Task, Board, Workspace, Activity
+from constants import TaskType, TaskStatus, PERSONAL_TASK_TYPES, UNTICKETED_TASK_TYPES
+from adapters.orm.models.pg_models import Task, Board, Workspace, Activity, workspace_users
 from dto.task_dto import TaskDtoMapper
 from config import logger
 from adapters.orm.models.database import get_db
-from sqlalchemy import text
+from sqlalchemy import text, or_, and_
 from utils.ticket_keys import generate_key, taken_keys, parse_ticket_key
+from utils import notifications
 import traceback
 import re
 import uuid
@@ -18,8 +19,57 @@ class TaskHandler:
         self.db = next(get_db())
         logger.info("TaskHandler initialized")
 
-    # Not work items -- these never get a ticket number.
-    UNTICKETED_TYPES = (TaskType.NOTE.value, TaskType.QUICK_NOTE.value, TaskType.TIME_BLOCK.value)
+    # Personal items are private to their author. Everything else is
+    # visible to every member of the workspace, Jira-style, so an assignee
+    # can actually see and update what they were assigned; work items among
+    # them are numbered (ENG-42), calendar events aren't.
+    UNTICKETED_TYPES = UNTICKETED_TASK_TYPES
+    PERSONAL_TYPES = PERSONAL_TASK_TYPES
+
+    def _visible_to(self, user_id):
+        """Filter clause: work items are shared within the workspace (the
+        controller has already verified membership); personal items only
+        with their author."""
+        return or_(Task.user_id == user_id, Task.task_type.notin_(self.PERSONAL_TYPES))
+
+    def _can_delete(self, task: Task, user_id: str) -> bool:
+        """Anyone in the workspace can edit a work item; deleting one is
+        limited to its creator or a workspace owner/admin."""
+        if str(task.user_id) == str(user_id):
+            return True
+        owner_id = self.db.query(Workspace.owner_id).filter(Workspace.workspace_id == task.workspace_id).scalar()
+        if str(owner_id) == str(user_id):
+            return True
+        role = self.db.query(workspace_users.c.role).filter(
+            workspace_users.c.workspace_id == task.workspace_id,
+            workspace_users.c.user_id == user_id,
+        ).scalar()
+        return role in ("admin", "owner")
+
+    def _notify_assignment(self, task: Task, actor_id):
+        if not task.assignee_id or not self._is_ticketed(task):
+            return
+        key = self._ticket_key(task)
+        notifications.notify(
+            self.db, workspace_id=task.workspace_id, recipients=[task.assignee_id], actor_id=actor_id,
+            type=notifications.ASSIGNED,
+            title=f"{key or task.title} was assigned to you",
+            message=f"{notifications.display_name(self.db, actor_id)} assigned you: {task.title}",
+            entity_id=task.task_id, entity_type="task", properties={"ticket_key": key},
+        )
+
+    def _notify_status_change(self, task: Task, actor_id, old_status: str):
+        if not self._is_ticketed(task):
+            return
+        key = self._ticket_key(task)
+        label = lambda s: (s or "").replace("_", " ").title()
+        notifications.notify(
+            self.db, workspace_id=task.workspace_id, recipients=notifications.followers(task), actor_id=actor_id,
+            type=notifications.STATUS_CHANGED,
+            title=f"{key or task.title} moved to {label(task.status)}",
+            message=f"{notifications.display_name(self.db, actor_id)} changed \"{task.title}\" from {label(old_status)} to {label(task.status)}",
+            entity_id=task.task_id, entity_type="task", properties={"ticket_key": key},
+        )
 
     def _is_ticketed(self, task: Task) -> bool:
         return task.task_type not in self.UNTICKETED_TYPES
@@ -163,7 +213,7 @@ class TaskHandler:
                 due_on=task_cmd.due_on,
                 start_time=task_cmd.start_time,
                 end_time=task_cmd.end_time,
-                assignee_id=task_cmd.assignee_id,
+                assignee_id=task_cmd.assignee_id or None,
                 reporter_id=task_cmd.reporter_id,
                 watchers=task_cmd.watchers,
                 labels=task_cmd.labels,
@@ -179,6 +229,7 @@ class TaskHandler:
             self.db.flush()
             if self._is_ticketed(task):
                 self._assign_task_number(task)
+            self._notify_assignment(task, task_cmd.user_id)
             # Notes/quick-notes aren't ticketed work items -- skip them so
             # the activity feed stays about actual tasks, not every scratch note.
             if task.task_type not in (TaskType.NOTE.value, TaskType.QUICK_NOTE.value):
@@ -208,7 +259,7 @@ class TaskHandler:
             task = self.db.query(Task).filter(
                 Task.task_id == task_cmd.task_id,
                 Task.workspace_id == task_cmd.workspace_id,
-                Task.user_id == task_cmd.user_id
+                self._visible_to(task_cmd.user_id),
             ).first()
 
             if not task:
@@ -216,6 +267,11 @@ class TaskHandler:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Task not found"
+                )
+            if not self._can_delete(task, task_cmd.user_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only the creator or a workspace admin can delete this item"
                 )
 
             task.is_deleted = True
@@ -249,7 +305,7 @@ class TaskHandler:
             task = self.db.query(Task).filter(
                 Task.task_id == task_cmd.task_id,
                 Task.workspace_id == task_cmd.workspace_id,
-                Task.user_id == task_cmd.user_id
+                self._visible_to(task_cmd.user_id),
             ).first()
 
             if not task:
@@ -301,7 +357,9 @@ class TaskHandler:
             if task_cmd.end_time is not None:
                 task.end_time = task_cmd.end_time
             if task_cmd.assignee_id is not None:
-                task.assignee_id = task_cmd.assignee_id
+                # "" unassigns; None (omitted) leaves it alone -- same
+                # convention as epic_id/sprint_id.
+                task.assignee_id = task_cmd.assignee_id or None
             if task_cmd.reporter_id is not None:
                 task.reporter_id = task_cmd.reporter_id
             if task_cmd.watchers is not None:
@@ -338,6 +396,10 @@ class TaskHandler:
                     task.workspace_id, task_cmd.user_id, "updated", "task", task.task_id,
                     {"title": task.title, "ticket_key": self._ticket_key(task), "changes": changes},
                 )
+            if "assignee_id" in changes:
+                self._notify_assignment(task, task_cmd.user_id)
+            if "status" in changes:
+                self._notify_status_change(task, task_cmd.user_id, old_status)
 
             self.db.commit()
             logger.info(f"Successfully updated task: {task_cmd.task_id}")
@@ -356,7 +418,7 @@ class TaskHandler:
 
     def list_tasks(self, user_id: str, workspace_id: str = None, board_id: str = None, skip: int = 0, limit: int = 10,
                    task_status=None, task_type='todo', order='desc', priority=None,
-                   sprint_id=None, backlog_only=False, epic_id=None, parent_task_id=None):
+                   sprint_id=None, backlog_only=False, epic_id=None, parent_task_id=None, q=None):
         """List tasks with optional filtering"""
         try:
             logger.info(f"Listing tasks for user {user_id} with filters: workspace_id={workspace_id}, "
@@ -364,7 +426,7 @@ class TaskHandler:
                        f"priority={priority}, sprint_id={sprint_id}, backlog_only={backlog_only}, epic_id={epic_id}")
 
             query = self.db.query(Task).filter(
-                Task.user_id == user_id,
+                self._visible_to(user_id),
                 Task.is_deleted == False
             )
 
@@ -380,6 +442,14 @@ class TaskHandler:
                 query = query.filter(Task.epic_id == epic_id)
             if parent_task_id:
                 query = query.filter(Task.parent_task_id == parent_task_id)
+            if q and q.strip():
+                term = q.strip()
+                escaped = term.replace('%', r'\%').replace('_', r'\_')
+                matches = [Task.title.ilike(f"%{escaped}%")]
+                key_match = self._ticket_key_clause(workspace_id, term)
+                if key_match is not None:
+                    matches.append(key_match)
+                query = query.filter(or_(*matches))
             if task_status:
                 try:
                     status_enum = TaskStatus(task_status.lower())
@@ -426,7 +496,7 @@ class TaskHandler:
             task = self.db.query(Task).filter(
                 Task.task_id == task_id,
                 Task.workspace_id == workspace_id,
-                Task.user_id == user_id,
+                self._visible_to(user_id),
                 Task.is_deleted == False
             ).first()
 
@@ -450,31 +520,35 @@ class TaskHandler:
                 detail=f"Error getting task: {str(e)}"
             )
 
-    def get_task_by_key(self, workspace_id: str, ticket_key: str, user_id: str):
-        """Resolve a Jira-style key ("ENG-42") to its task: the prefix is
-        either a board's key or the workspace's own key (boardless tasks)."""
+    def _ticket_key_clause(self, workspace_id, ticket_key):
+        """SQL condition matching the task a Jira-style key names, or None
+        if it isn't a key in this workspace. The prefix is a board's key, or
+        the workspace's own key for boardless tasks."""
         parsed = parse_ticket_key(ticket_key)
         if not parsed:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            return None
         prefix, number = parsed
-
-        query = self.db.query(Task).filter(
-            Task.workspace_id == workspace_id,
-            Task.user_id == user_id,
-            Task.task_number == number,
-            Task.is_deleted == False,
-        )
         board_id = self.db.query(Board.board_id).filter(
             Board.workspace_id == workspace_id,
             Board.key == prefix,
             Board.is_deleted == False,
         ).scalar()
         if board_id:
-            task = query.filter(Task.board_id == board_id).first()
-        elif self.db.query(Workspace.key).filter(Workspace.workspace_id == workspace_id).scalar() == prefix:
-            task = query.filter(Task.board_id.is_(None)).first()
-        else:
-            task = None
+            return and_(Task.task_number == number, Task.board_id == board_id)
+        if self.db.query(Workspace.key).filter(Workspace.workspace_id == workspace_id).scalar() == prefix:
+            return and_(Task.task_number == number, Task.board_id.is_(None))
+        return None
+
+    def get_task_by_key(self, workspace_id: str, ticket_key: str, user_id: str):
+        """Resolve a Jira-style key ("ENG-42") to its task: the prefix is
+        either a board's key or the workspace's own key (boardless tasks)."""
+        key_match = self._ticket_key_clause(workspace_id, ticket_key)
+        task = self.db.query(Task).filter(
+            Task.workspace_id == workspace_id,
+            self._visible_to(user_id),
+            Task.is_deleted == False,
+            key_match,
+        ).first() if key_match is not None else None
 
         if not task:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")

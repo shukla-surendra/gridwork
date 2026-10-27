@@ -17,8 +17,8 @@ class Customer(Base):
     billing_address = Column(String, nullable=True)
     tax_id = Column(String, nullable=True)  # GSTIN/VAT/etc -- free text, no jurisdiction-specific validation
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
 
 class Item(Base):
@@ -36,8 +36,8 @@ class Item(Base):
     unit_price = Column(Numeric(12, 2), nullable=False, default=0)
     tax_rate = Column(Numeric(5, 2), nullable=False, default=0)  # percent, e.g. 18.00 for 18% GST
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
 
 class BillingSequence(Base):
@@ -65,8 +65,8 @@ class Quote(Base):
     subtotal = Column(Numeric(12, 2), nullable=False, default=0)
     tax_total = Column(Numeric(12, 2), nullable=False, default=0)
     total = Column(Numeric(12, 2), nullable=False, default=0)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     customer = relationship("Customer")
     lines = relationship("QuoteLine", cascade="all, delete-orphan", order_by="QuoteLine.sort_order")
@@ -101,8 +101,8 @@ class Invoice(Base):
     subtotal = Column(Numeric(12, 2), nullable=False, default=0)
     tax_total = Column(Numeric(12, 2), nullable=False, default=0)
     total = Column(Numeric(12, 2), nullable=False, default=0)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     customer = relationship("Customer")
     lines = relationship("InvoiceLine", cascade="all, delete-orphan", order_by="InvoiceLine.sort_order")
@@ -134,4 +134,4 @@ class Payment(Base):
     method = Column(String, nullable=False, default="other")  # cash | bank_transfer | card | upi | other
     reference = Column(String, nullable=True)
     notes = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))

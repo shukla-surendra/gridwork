@@ -1,7 +1,8 @@
 """"""
 from starlette import status
 from fastapi import HTTPException, UploadFile
-from commands.user_cmd import UserCommand, UserUpdateCommand
+from commands.user_cmd import UserCommand, UserUpdateCommand, ChangePasswordCommand
+from utils.passwords import validate_password_strength
 from dto.user_dto import UserDtoMapper
 from config import logger, get_config
 from commands.user_cmd import EmailVerificationRequest, LoginCommand
@@ -109,6 +110,27 @@ class UserHandler:
         except Exception as e:
             logger.error(f"Error deleting user: {e}")
             raise HTTPException(status_code=500, detail="Failed to delete user")
+
+    def change_password(self, user_id: str, cmd: ChangePasswordCommand):
+        """Requires the current password, so a stolen session token alone
+        can't be used to lock the real owner out of their account."""
+        user = self.storage.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if not self.storage.verify_password(user['password_hash'], cmd.current_password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+        if cmd.new_password == cmd.current_password:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New password must be different from the current one")
+        try:
+            validate_password_strength(cmd.new_password)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        try:
+            self.storage.update_user(user_id, {'password': cmd.new_password})
+        except Exception as e:
+            logger.error(f"Error changing password: {e}")
+            raise HTTPException(status_code=500, detail="Failed to change password")
+        return {"message": "Password changed"}
 
     def verify_email(self, tcr_cmd: EmailVerificationRequest):
         try:

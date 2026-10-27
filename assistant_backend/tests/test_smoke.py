@@ -5,11 +5,6 @@ that type yet? This is the fast "is anything obviously broken" signal --
 depth (real CRUD, real assertions) belongs in test_core_flow.py instead.
 
 Endpoints deliberately left out, with why:
-  - /timeblocks -- timeblock_controller.py's GET/PUT/DELETE routes are
-    missing the /api/v1/workspaces/{workspace_id} prefix that POST has, so
-    workspace_id is silently a required *query* param instead of a path
-    param. Flagging as a known inconsistency rather than guessing the
-    intended fix.
   - comments -- no plain list route exists (only /{comment_id} and
     /tasks/{task_id}); nothing equivalent to smoke-test here.
 """

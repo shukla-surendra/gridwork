@@ -186,7 +186,7 @@ async def list_page_comments(workspace_id: str, page_id: str, user: dict = Depen
 async def delete_page_comment(workspace_id: str, page_id: str, comment_id: str, user: dict = Depends(gate)):
     _verify_workspace_access(workspace_id, user.get("user_id"))
     try:
-        CommentHandler().delete_comment(CommentDeleteCommand(comment_id=comment_id, workspace_id=workspace_id))
+        CommentHandler().delete_comment(CommentDeleteCommand(comment_id=comment_id, workspace_id=workspace_id, user_id=user.get("user_id")))
     except HTTPException:
         raise
     except Exception as e:

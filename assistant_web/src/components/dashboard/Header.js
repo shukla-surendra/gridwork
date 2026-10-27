@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import {
     IconButton,
     Flex,
@@ -16,19 +16,19 @@ import {
     MenuList,
     MenuItem,
     MenuDivider,
-    useColorMode,
-    Select,
     Box,
-    Button
+    Button,
+    Kbd
 } from '@chakra-ui/react';
-import { FiMenu, FiBell, FiSearch, FiSun, FiMoon, FiChevronDown, FiLogOut, FiUser, FiSettings } from 'react-icons/fi';
+import { FiMenu, FiBell, FiSearch, FiChevronDown, FiLogOut, FiUser, FiSettings, FiPlus, FiCheckSquare, FiFileText } from 'react-icons/fi';
 import NotificationList from "./NotificationList";
 import { useRouter } from 'next/router';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../../slices/auth';
 import auth from '../../utils/auth';
 import QuickProfilePopover from './modals/QuickProfilePopover';
-import UnifiedCreateButton from './UnifiedCreateButton';
+import CommandPalette from './CommandPalette';
+import { fetchNotifications, selectUnreadCount } from '../../slices/notifications';
 import NewTaskDrawer from './drawers/NewTaskDrawer';
 import NewNoteDrawer from './drawers/NewNoteDrawer';
 
@@ -37,15 +37,43 @@ const Header = ({ onMenuToggle }) => {
     const { isOpen: isNotificationsOpen, onOpen: onNotificationsOpen, onClose: onNotificationsClose } = useDisclosure();
     const { isOpen: isNewTaskOpen, onOpen: onNewTaskOpen, onClose: onNewTaskClose } = useDisclosure();
     const { isOpen: isNewNoteOpen, onOpen: onNewNoteOpen, onClose: onNewNoteClose } = useDisclosure();
+    const { isOpen: isSearchOpen, onOpen: onSearchOpen, onClose: onSearchClose } = useDisclosure();
 
     const bgColor = useColorModeValue("white", "gray.800");
     const borderColor = useColorModeValue("gray.200", "gray.700");
-    const { colorMode, toggleColorMode } = useColorMode();
     const router = useRouter();
     const navigate = (path) => router.push(path);
     const dispatch = useDispatch();
     
     const user = useSelector(state => state.auth.user);
+    const unreadCount = useSelector(selectUnreadCount);
+    const badgeBorder = bgColor;
+
+    // Keep the bell's unread count fresh: poll while the tab is visible and
+    // refresh as soon as the user comes back to it.
+    useEffect(() => {
+        const refresh = () => {
+            if (document.visibilityState === 'visible') dispatch(fetchNotifications());
+        };
+        refresh();
+        const timer = setInterval(refresh, 60000);
+        document.addEventListener('visibilitychange', refresh);
+        return () => {
+            clearInterval(timer);
+            document.removeEventListener('visibilitychange', refresh);
+        };
+    }, [dispatch]);
+
+    useEffect(() => {
+        const onKeyDown = (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                onSearchOpen();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [onSearchOpen]);
 
     const handleLogout = () => {
         dispatch(logout()); // Dispatch Redux logout action
@@ -76,14 +104,35 @@ const Header = ({ onMenuToggle }) => {
                         onClick={onMenuToggle}
                         aria-label="Toggle menu"
                     />
-                    <IconButton
-                        icon={<FiSearch />}
-                        variant="ghost"
+                    <Button
+                        leftIcon={<FiSearch />}
+                        variant="outline"
+                        size="sm"
+                        color="gray.500"
+                        fontWeight="normal"
+                        justifyContent="flex-start"
+                        w={{ base: 'auto', md: '280px' }}
+                        onClick={onSearchOpen}
                         aria-label="Search"
-                    />
+                    >
+                        <Text display={{ base: 'none', md: 'block' }} flex="1" textAlign="left">Search…</Text>
+                        <HStack spacing={1} display={{ base: 'none', md: 'flex' }}>
+                            <Kbd fontSize="xs">⌘</Kbd><Kbd fontSize="xs">K</Kbd>
+                        </HStack>
+                    </Button>
                 </HStack>
 
-                <HStack spacing={4}>
+                <HStack spacing={2}>
+                    <Menu>
+                        <MenuButton as={Button} leftIcon={<FiPlus />} colorScheme="blue" size="sm">
+                            Create
+                        </MenuButton>
+                        <MenuList>
+                            <MenuItem icon={<FiCheckSquare />} onClick={onNewTaskOpen}>Issue</MenuItem>
+                            <MenuItem icon={<FiFileText />} onClick={onNewNoteOpen}>Note</MenuItem>
+                        </MenuList>
+                    </Menu>
+
                     <Popover
                         isOpen={isNotificationsOpen}
                         onClose={onNotificationsClose}
@@ -91,21 +140,46 @@ const Header = ({ onMenuToggle }) => {
                         zIndex={1000}
                     >
                         <PopoverTrigger>
-                            <IconButton
-                                icon={<FiBell />}
-                                variant="ghost"
-                                onClick={onNotificationsOpen}
-                                aria-label="Notifications"
-                            />
+                            <Box position="relative">
+                                <IconButton
+                                    icon={<FiBell />}
+                                    variant="ghost"
+                                    onClick={onNotificationsOpen}
+                                    aria-label={unreadCount ? `Notifications (${unreadCount} unread)` : 'Notifications'}
+                                />
+                                {unreadCount > 0 && (
+                                    <Box
+                                        position="absolute"
+                                        top="4px"
+                                        right="4px"
+                                        minW="18px"
+                                        h="18px"
+                                        px={1}
+                                        borderRadius="full"
+                                        bg="red.500"
+                                        color="white"
+                                        fontSize="10px"
+                                        fontWeight="bold"
+                                        lineHeight="18px"
+                                        textAlign="center"
+                                        border="2px solid"
+                                        borderColor={badgeBorder}
+                                        boxSizing="content-box"
+                                        pointerEvents="none"
+                                    >
+                                        {unreadCount > 99 ? '99+' : unreadCount}
+                                    </Box>
+                                )}
+                            </Box>
                         </PopoverTrigger>
                         <PopoverContent 
-                            width="340px" 
+                            width="360px" 
                             position="relative"
                             zIndex={1000}
                             boxShadow="xl"
                         >
                             <PopoverBody p={0}>
-                                <NotificationList />
+                                <NotificationList onClose={onNotificationsClose} />
                             </PopoverBody>
                         </PopoverContent>
                     </Popover>
@@ -138,6 +212,7 @@ const Header = ({ onMenuToggle }) => {
             </Flex>
 
             {/* Modals and Drawers */}
+            <CommandPalette isOpen={isSearchOpen} onClose={onSearchClose} />
             <QuickProfilePopover isOpen={isQuickProfileOpen} onClose={onQuickProfileClose} user={user} />
             <NewTaskDrawer 
                 currentTask={{}} 

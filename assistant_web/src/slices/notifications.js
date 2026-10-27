@@ -4,6 +4,7 @@ import NotificationService from "../services/notificationservice";
 const initialState = {
   notifications: [],
   loading: false,
+  loaded: false,
   error: null,
 };
 
@@ -43,18 +44,19 @@ export const deleteNotification = createAsyncThunk(
   }
 );
 
-// Individual PUT calls, not a dedicated bulk endpoint -- kept the backend
-// change scoped to what was actually broken (create/read/serialization),
-// not a new bulk-update route nothing else needs yet.
 export const markAllNotificationsRead = createAsyncThunk(
   "notifications/markAllRead",
-  async (_, { getState, dispatch }) => {
-    const { notifications } = getState().notifications;
-    const unread = notifications.filter((n) => !n.is_read);
-    await Promise.all(unread.map((n) => dispatch(markNotificationRead(n.notification_id))));
-    return true;
+  async (_, { rejectWithValue }) => {
+    try {
+      await NotificationService.markAllRead();
+      return true;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.detail || err.message);
+    }
   }
 );
+
+export const selectUnreadCount = (state) => state.notifications.notifications.filter((n) => !n.is_read).length;
 
 const notificationsSlice = createSlice({
   name: "notifications",
@@ -68,6 +70,7 @@ const notificationsSlice = createSlice({
       })
       .addCase(fetchNotifications.fulfilled, (state, action) => {
         state.loading = false;
+        state.loaded = true;
         state.notifications = action.payload;
       })
       .addCase(fetchNotifications.rejected, (state, action) => {
@@ -77,6 +80,9 @@ const notificationsSlice = createSlice({
       .addCase(markNotificationRead.fulfilled, (state, action) => {
         const idx = state.notifications.findIndex((n) => n.notification_id === action.payload.notification_id);
         if (idx !== -1) state.notifications[idx] = action.payload;
+      })
+      .addCase(markAllNotificationsRead.fulfilled, (state) => {
+        state.notifications.forEach((n) => { n.is_read = true; });
       })
       .addCase(deleteNotification.fulfilled, (state, action) => {
         state.notifications = state.notifications.filter((n) => n.notification_id !== action.payload);

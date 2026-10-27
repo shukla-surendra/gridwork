@@ -17,8 +17,8 @@ class Teacher(Base):
     phone = Column(String, nullable=True)
     subject_specialization = Column(String, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
 
 class SchoolClass(Base):
@@ -33,8 +33,8 @@ class SchoolClass(Base):
     # same reasoning as Employee.manager_id in the HR module.
     homeroom_teacher_id = Column(UUID(as_uuid=True), ForeignKey("school_teachers.teacher_id", ondelete="SET NULL"), nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     homeroom_teacher = relationship("Teacher", foreign_keys=[homeroom_teacher_id])
 
@@ -57,8 +57,8 @@ class Student(Base):
     email = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     school_class = relationship("SchoolClass", foreign_keys=[class_id])
 
@@ -83,8 +83,8 @@ class Attendance(Base):
     status = Column(String, nullable=False)  # present | absent | late | excused
     marked_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     student = relationship("Student", foreign_keys=[student_id])
 
@@ -109,8 +109,8 @@ class FeeStructure(Base):
     due_date = Column(Date, nullable=True)
     description = Column(String, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     school_class = relationship("SchoolClass", foreign_keys=[class_id])
 
@@ -126,7 +126,7 @@ class FeePayment(Base):
     payment_date = Column(Date, nullable=False)
     payment_method = Column(String, nullable=False, default="cash")  # cash | card | bank_transfer | online | other
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
 
     student = relationship("Student", foreign_keys=[student_id])
     fee_structure = relationship("FeeStructure", foreign_keys=[fee_structure_id])
@@ -144,8 +144,8 @@ class Exam(Base):
     max_marks = Column(Numeric(10, 2), nullable=False)
     academic_year = Column(String, nullable=False)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     school_class = relationship("SchoolClass", foreign_keys=[class_id])
 
@@ -159,8 +159,8 @@ class ExamResult(Base):
     student_id = Column(UUID(as_uuid=True), ForeignKey("school_students.student_id", ondelete="CASCADE"), nullable=False)
     marks_obtained = Column(Numeric(10, 2), nullable=False)
     remarks = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
     exam = relationship("Exam", foreign_keys=[exam_id])
     student = relationship("Student", foreign_keys=[student_id])

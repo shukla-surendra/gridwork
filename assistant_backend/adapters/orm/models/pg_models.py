@@ -5,6 +5,12 @@ import uuid
 from .base import Base
 import datetime
 
+
+def _utcnow():
+    # Passed as a callable so each row gets its own timestamp, not the import time.
+    return datetime.datetime.now(datetime.UTC)
+
+
 # Association tables
 workspace_users = Table(
     'workspace_users',
@@ -12,8 +18,8 @@ workspace_users = Table(
     Column('workspace_id', UUID(as_uuid=True), ForeignKey('workspaces.workspace_id'), primary_key=True),
     Column('user_id', UUID(as_uuid=True), ForeignKey('users.user_id'), primary_key=True),
     Column('role', String(50), nullable=False, server_default='member'),
-    Column('created_at', DateTime, default=datetime.datetime.now(datetime.UTC)),
-    Column('updated_at', DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    Column('created_at', DateTime, default=_utcnow),
+    Column('updated_at', DateTime, default=_utcnow, onupdate=_utcnow)
 )
 
 task_tags = Table(
@@ -21,7 +27,7 @@ task_tags = Table(
     Base.metadata,
     Column('task_id', UUID(as_uuid=True), ForeignKey('tasks.task_id'), primary_key=True),
     Column('tag_id', UUID(as_uuid=True), ForeignKey('tags.id'), primary_key=True),
-    Column('created_at', DateTime, default=datetime.datetime.now(datetime.UTC))
+    Column('created_at', DateTime, default=_utcnow)
 )
 
 class User(Base):
@@ -53,8 +59,8 @@ class User(Base):
         ForeignKey("workspaces.workspace_id", use_alter=True, name="fk_users_default_workspace_id"),
         nullable=True,
     )
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     default_workspace = relationship("Workspace", foreign_keys=[default_workspace_id])
     workspaces = relationship("Workspace", secondary=workspace_users, back_populates="users")
     tasks = relationship("Task", foreign_keys="Task.user_id", back_populates="user")
@@ -82,8 +88,8 @@ class UserSettings(Base):
     theme = Column(String, default="light")
     preferences = Column(JSONB, nullable=True, default={})
     notification_settings = Column(JSONB, nullable=True, default={})
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     user = relationship("User", back_populates="settings")
     workspace = relationship("Workspace")
 
@@ -134,8 +140,8 @@ class Task(Base):
     settings = Column(JSONB, nullable=True)
     public_access = Column(Boolean, default=False)
     slug = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     workspace = relationship("Workspace", back_populates="tasks")
     board = relationship("Board", back_populates="tasks")
     user = relationship("User", foreign_keys=[user_id], back_populates="tasks")
@@ -165,7 +171,7 @@ class TaskLink(Base):
     # shown on the target side ("is blocked by" etc.) is computed, not
     # stored, so the same row answers both ends of the relationship.
     link_type = Column(String, nullable=False, default="relates_to")
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
     source_task = relationship("Task", foreign_keys=[source_task_id], back_populates="outgoing_links")
     target_task = relationship("Task", foreign_keys=[target_task_id], back_populates="incoming_links")
 
@@ -192,8 +198,8 @@ class Workspace(Base):
     # Generated lazily the first time a boardless task needs a number.
     key = Column(String, nullable=True)
     next_task_number = Column(Integer, nullable=False, default=1, server_default="1")
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     owner = relationship("User", foreign_keys=[owner_id])
     tasks = relationship("Task", back_populates="workspace")
     users = relationship("User", secondary=workspace_users, back_populates="workspaces")
@@ -227,8 +233,8 @@ class WorkspaceModule(Base):
     enabled = Column(Boolean, nullable=False, default=False)
     enabled_at = Column(DateTime, nullable=True)
     enabled_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 class Board(Base):
     __tablename__ = "boards"
@@ -249,8 +255,8 @@ class Board(Base):
     properties = Column(JSONB, nullable=True)
     views = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     workspace = relationship("Workspace", back_populates="boards")
     items = relationship("BoardItem", back_populates="board", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="board")
@@ -273,8 +279,8 @@ class Epic(Base):
     start_date = Column(DateTime, nullable=True)
     due_date = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     board = relationship("Board", back_populates="epics")
     tasks = relationship("Task", back_populates="epic")
 
@@ -290,8 +296,8 @@ class Sprint(Base):
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     board = relationship("Board", back_populates="sprints")
     tasks = relationship("Task", back_populates="sprint")
 
@@ -306,8 +312,8 @@ class BoardItem(Base):
     order = Column(Integer, nullable=True)
     assignee_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     board = relationship("Board", back_populates="items")
     assignee = relationship("User", foreign_keys=[assignee_id], back_populates="assigned_items")
 
@@ -323,8 +329,8 @@ class Reminder(Base):
     repeat = Column(String, nullable=True)
     properties = Column(JSONB, nullable=True)
     is_completed = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     workspace = relationship("Workspace", back_populates="reminders")
     user = relationship("User", back_populates="reminders")
 
@@ -341,8 +347,8 @@ class Notification(Base):
     entity_type = Column(String, nullable=True)
     properties = Column(JSONB, nullable=True)
     is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     workspace = relationship("Workspace", back_populates="notifications")
     user = relationship("User", back_populates="notifications")
 
@@ -358,8 +364,8 @@ class Comment(Base):
     content = Column(String, nullable=False)
     properties = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     workspace = relationship("Workspace", back_populates="comments")
     user = relationship("User", back_populates="comments")
     task = relationship("Task", back_populates="comments")
@@ -371,8 +377,8 @@ class Tag(Base):
     name = Column(String, nullable=False, unique=True)
     color = Column(String, default="#808080")
     description = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     tasks = relationship("Task", secondary=task_tags, back_populates="tags")
 
@@ -390,8 +396,8 @@ class Page(Base):
     content = Column(JSONB, nullable=True)
     properties = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     workspace = relationship("Workspace", back_populates="pages")
     blocks = relationship("Block", back_populates="page")
@@ -407,8 +413,8 @@ class Block(Base):
     properties = Column(JSONB, nullable=True)
     order = Column(Integer, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     page = relationship("Page", back_populates="blocks")
 
@@ -421,8 +427,8 @@ class Database(Base):
     description = Column(String, nullable=True)
     properties = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     workspace = relationship("Workspace", back_populates="databases")
     entries = relationship("DatabaseEntry", back_populates="database")
@@ -436,8 +442,8 @@ class DatabaseEntry(Base):
     content = Column(JSONB, nullable=True)
     properties = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     database = relationship("Database", back_populates="entries")
 
@@ -454,8 +460,8 @@ class Template(Base):
     properties = Column(JSONB, nullable=True)
     tags = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     workspace = relationship("Workspace", back_populates="templates")
 
@@ -470,8 +476,8 @@ class Activity(Base):
     entity_id = Column(UUID(as_uuid=True), nullable=False)
     details = Column(JSONB, nullable=True)
     properties = Column(JSONB, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     workspace = relationship("Workspace", back_populates="activities")
     user = relationship("User", back_populates="activities")
@@ -486,8 +492,8 @@ class Integration(Base):
     settings = Column(JSONB, nullable=True)
     is_active = Column(Boolean, default=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     workspace = relationship("Workspace", back_populates="integrations")
 
@@ -501,8 +507,8 @@ class Chat(Base):
     model = Column(String, nullable=False, default="gpt-3.5-turbo")  # The AI model being used
     context = Column(JSONB, nullable=True)  # Additional context for the chat
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     workspace = relationship("Workspace", back_populates="chats")
     user = relationship("User", back_populates="chats")
@@ -516,7 +522,7 @@ class ChatMessage(Base):
     role = Column(String, nullable=False)  # user, assistant, system
     content = Column(Text, nullable=False)
     message_metadata = Column(JSONB, nullable=True)  # Additional metadata like tokens used, etc.
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     chat = relationship("Chat", back_populates="messages")

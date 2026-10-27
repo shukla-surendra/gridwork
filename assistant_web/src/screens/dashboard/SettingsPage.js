@@ -6,7 +6,7 @@ import {
   Heading,
   Text,
   Switch,
-  Select,
+  Icon,
   Button,
   useColorMode,
   useColorModeValue,
@@ -25,6 +25,7 @@ import {
   Spinner,
   Divider,
   Tooltip,
+  useDisclosure,
 } from '@chakra-ui/react';
 import { FiArrowLeft, FiMoon, FiSun, FiBell, FiUser, FiGlobe, FiGrid, FiBox, FiBriefcase } from 'react-icons/fi';
 import { useRouter } from 'next/router';
@@ -37,30 +38,26 @@ import Header from '../../components/dashboard/Header';
 import ModuleService from '../../services/ModuleService';
 import UserService from '../../services/userservice';
 import AvatarUpload from '../../components/dashboard/modals/AvatarUpload';
+import ChangePasswordModal from '../../components/settings/ChangePasswordModal';
 import ConfigService from '../../utils/config';
 import Auth from '../../utils/auth';
+import { NOTIFICATION_TYPES } from '../../utils/notificationMeta';
 
 const MODULE_ICONS = { box: FiBox };
 
 const SettingsPage = () => {
   const router = useRouter();
-  const navigate = (path) => router.push(path);
   const dispatch = useDispatch();
   const toast = useToast();
+  const changePasswordModal = useDisclosure();
   const [isMenuCollapsed, setIsMenuCollapsed] = useState(false);
   const pageBg = useColorModeValue('gray.50', 'gray.900');
   const mainBg = useColorModeValue('gray.50', 'gray.800');
   const { colorMode, toggleColorMode } = useColorMode();
   const { settings } = useSelector((state) => state.settings);
   const { user } = useSelector((state) => state.auth);
-  const [localSettings, setLocalSettings] = useState({
-    email_notifications: true,
-    task_reminders: true,
-    weekly_digest: false,
-    language: 'en',
-    timezone: 'UTC',
-    theme: colorMode,
-  });
+  const [savingType, setSavingType] = useState(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   // Profile fields live on the User record, not UserSettings -- saved
   // through a separate PUT /users/{id} call (see handleSave), which is
   // also why email isn't editable here: there's no backend support for
@@ -165,15 +162,6 @@ const SettingsPage = () => {
   };
 
   useEffect(() => {
-    if (settings) {
-      setLocalSettings(prev => ({
-        ...prev,
-        ...settings,
-      }));
-    }
-  }, [settings]);
-
-  useEffect(() => {
     if (user) {
       setProfileForm({
         first_name: user.first_name || '',
@@ -183,38 +171,54 @@ const SettingsPage = () => {
     }
   }, [user]);
 
-  const handleSettingChange = (key, value) => {
-    setLocalSettings(prev => ({ ...prev, [key]: value }));
+  // In-app notification types are on unless explicitly switched off
+  // (backend: utils/notifications.py). Saved immediately, like modules.
+  const isTypeEnabled = (type) => settings?.notification_settings?.[type] !== false;
+
+  const handleToggleNotificationType = async (type, enabled) => {
+    setSavingType(type);
+    try {
+      await dispatch(updateSettings({
+        settings_id: settings.settings_id,
+        user_id: settings.user_id,
+        workspace_id: settings.workspace_id,
+        notification_settings: { ...(settings.notification_settings || {}), [type]: enabled },
+      })).unwrap();
+    } catch (error) {
+      toast({ title: "Couldn't update notification settings", status: 'error', duration: 3000, isClosable: true });
+    } finally {
+      setSavingType(null);
+    }
   };
 
   const handleProfileChange = (key, value) => {
     setProfileForm(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = async () => {
+  const handleSaveProfile = async () => {
+    if (!user?.user_id) return;
+    setIsSavingProfile(true);
     try {
-      const updates = [dispatch(updateSettings(localSettings)).unwrap()];
-      if (user?.user_id) {
-        updates.push(dispatch(updateProfile({ userId: user.user_id, data: profileForm })).unwrap());
-      }
-      await Promise.all(updates);
-      toast({
-        title: 'Success',
-        description: 'Settings updated successfully',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
+      await dispatch(updateProfile({ userId: user.user_id, data: profileForm })).unwrap();
+      toast({ title: 'Profile saved', status: 'success', duration: 2500, isClosable: true });
     } catch (error) {
       toast({
-        title: 'Error',
-        description: typeof error === 'string' ? error : (error.message || 'Failed to update settings'),
+        title: "Couldn't save profile",
+        description: typeof error === 'string' ? error : (error.message || 'Please try again'),
         status: 'error',
         duration: 5000,
         isClosable: true,
       });
+    } finally {
+      setIsSavingProfile(false);
     }
   };
+
+  const profileDirty = !!user && (
+    profileForm.first_name !== (user.first_name || '') ||
+    profileForm.last_name !== (user.last_name || '') ||
+    profileForm.bio !== (user.bio || '')
+  );
 
   if (!settings) {
     return (
@@ -243,18 +247,11 @@ const SettingsPage = () => {
             <IconButton
               icon={<FiArrowLeft />}
               variant="ghost"
-              onClick={() => navigate(-1)}
+              onClick={() => router.back()}
               aria-label="Go back"
             />
             <Heading size="lg">Settings</Heading>
           </HStack>
-          <Button
-            colorScheme="blue"
-            onClick={handleSave}
-            isLoading={!settings}
-          >
-            Save Changes
-          </Button>
         </Flex>
 
         {/* Settings Tabs */}
@@ -275,7 +272,7 @@ const SettingsPage = () => {
             <Tab>
               <HStack spacing={2}>
                 <FiGlobe />
-                <Text>Preferences</Text>
+                <Text>Appearance</Text>
               </HStack>
             </Tab>
             <Tab>
@@ -333,6 +330,11 @@ const SettingsPage = () => {
                         onChange={(e) => handleProfileChange('bio', e.target.value)}
                       />
                     </FormControl>
+                    <Flex justify="flex-end">
+                      <Button colorScheme="blue" onClick={handleSaveProfile} isLoading={isSavingProfile} isDisabled={!profileDirty}>
+                        Save profile
+                      </Button>
+                    </Flex>
                   </VStack>
                 </Box>
 
@@ -341,9 +343,7 @@ const SettingsPage = () => {
                     <Heading size="md" color="red.500">Danger Zone</Heading>
                     <HStack justify="space-between">
                       <Text fontSize="sm">Change your password</Text>
-                      <Tooltip label="Password changes aren't supported yet">
-                        <Button size="sm" isDisabled>Change Password</Button>
-                      </Tooltip>
+                      <Button size="sm" onClick={changePasswordModal.onOpen}>Change Password</Button>
                     </HStack>
                     <Divider />
                     <HStack justify="space-between">
@@ -372,39 +372,40 @@ const SettingsPage = () => {
               <VStack spacing={6} align="stretch">
                 <Box p={6} bg={bgColor} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
                   <VStack spacing={4} align="stretch">
-                    <Heading size="md">Notification Preferences</Heading>
-                    <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                      <FormLabel mb="0">Email Notifications</FormLabel>
-                      <Switch
-                        isChecked={localSettings.email_notifications}
-                        onChange={(e) => handleSettingChange('email_notifications', e.target.checked)}
-                      />
-                    </FormControl>
-                    <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                      <FormLabel mb="0">Task Reminders</FormLabel>
-                      <Switch
-                        isChecked={localSettings.task_reminders}
-                        onChange={(e) => handleSettingChange('task_reminders', e.target.checked)}
-                      />
-                    </FormControl>
-                    <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                      <FormLabel mb="0">Weekly Digest</FormLabel>
-                      <Switch
-                        isChecked={localSettings.weekly_digest}
-                        onChange={(e) => handleSettingChange('weekly_digest', e.target.checked)}
-                      />
-                    </FormControl>
+                    <Box>
+                      <Heading size="md">In-app notifications</Heading>
+                      <Text fontSize="sm" color="gray.500" mt={1}>
+                        Choose what shows up under the bell. You're never notified about your own changes.
+                      </Text>
+                    </Box>
+                    {Object.entries(NOTIFICATION_TYPES).map(([type, meta]) => (
+                      <FormControl key={type} display="flex" alignItems="center" justifyContent="space-between">
+                        <HStack spacing={3}>
+                          <Icon as={meta.icon} color={`${meta.color}.500`} />
+                          <Box>
+                            <FormLabel mb={0} htmlFor={`notify-${type}`}>{meta.label}</FormLabel>
+                            <Text fontSize="xs" color="gray.500">{meta.description}</Text>
+                          </Box>
+                        </HStack>
+                        <Switch
+                          id={`notify-${type}`}
+                          isChecked={isTypeEnabled(type)}
+                          isDisabled={savingType === type}
+                          onChange={(e) => handleToggleNotificationType(type, e.target.checked)}
+                        />
+                      </FormControl>
+                    ))}
                   </VStack>
                 </Box>
               </VStack>
             </TabPanel>
 
-            {/* Preferences Settings */}
+            {/* Appearance */}
             <TabPanel>
               <VStack spacing={6} align="stretch">
                 <Box p={6} bg={bgColor} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
                   <VStack spacing={4} align="stretch">
-                    <Heading size="md">Appearance & Language</Heading>
+                    <Heading size="md">Appearance</Heading>
                     <FormControl display="flex" alignItems="center" justifyContent="space-between">
                       <FormLabel mb="0">Dark Mode</FormLabel>
                       <IconButton
@@ -413,30 +414,6 @@ const SettingsPage = () => {
                         variant="ghost"
                         aria-label="Toggle color mode"
                       />
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>Language</FormLabel>
-                      <Select
-                        value={localSettings.language}
-                        onChange={(e) => handleSettingChange('language', e.target.value)}
-                      >
-                        <option value="en">English</option>
-                        <option value="es">Spanish</option>
-                        <option value="fr">French</option>
-                        <option value="de">German</option>
-                      </Select>
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>Timezone</FormLabel>
-                      <Select
-                        value={localSettings.timezone}
-                        onChange={(e) => handleSettingChange('timezone', e.target.value)}
-                      >
-                        <option value="UTC">UTC</option>
-                        <option value="EST">Eastern Time</option>
-                        <option value="PST">Pacific Time</option>
-                        <option value="GMT">GMT</option>
-                      </Select>
                     </FormControl>
                   </VStack>
                 </Box>
@@ -528,6 +505,7 @@ const SettingsPage = () => {
           </VStack>
         </Box>
       </Box>
+      <ChangePasswordModal isOpen={changePasswordModal.isOpen} onClose={changePasswordModal.onClose} />
     </Box>
   );
 };

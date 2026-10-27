@@ -22,7 +22,8 @@ from modules.billing.models import (
 from modules.library.models import (
     Seat, Shift, Member, Booking, Attendance as LibraryAttendance,
 )
-from constants import TaskStatus, TaskType, TaskPriority, UserStatus, UserRoles, UserType
+from constants import TaskStatus, TaskType, TaskPriority, UserStatus, UserRoles, UserType, UNTICKETED_TASK_TYPES
+from dto.task_dto import TaskDtoMapper
 from utils.ticket_keys import generate_key
 
 
@@ -49,7 +50,7 @@ def _html(*paragraphs: str) -> str:
 # board (and, for boardless work items, the workspace) a key and number
 # tasks in creation order, exactly as the add_ticket_numbering /
 # add_workspace_ticket_keys migrations backfill real data.
-_UNTICKETED_TYPES = (TaskType.NOTE.value, TaskType.QUICK_NOTE.value, TaskType.TIME_BLOCK.value)
+_UNTICKETED_TYPES = UNTICKETED_TASK_TYPES
 
 
 def _assign_ticket_keys(db: Session, workspace: Workspace):
@@ -134,18 +135,11 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     # column itself is nullable) makes GET /tasks 500 with a Pydantic
     # validation error the moment a task lacking them is serialized.
     #
-    # user_id=owner on every single one of these, deliberately -- handlers/
-    # task_handler.py's list_tasks() filters strictly on
-    # `Task.user_id == the logged-in caller`, not workspace membership.
-    # Tasks aren't shared workspace-wide the way Contacts/Deals are; a task
-    # is only ever visible to whoever's user_id created it. `teammate`
-    # never logs in anywhere (create_demo_account() only ever mints a
-    # token for `owner`), so any task given to `teammate` here would be
-    # permanently invisible through the normal Tasks/Notes screens --
-    # confirmed live: this is exactly why a demo login showed no seeded
-    # note/task/quick-note/time-block data even though the rows existed in
-    # the DB. teammate still shows up as `assignee_id` for realism --
-    # assignment doesn't gate visibility, only creatorship does.
+    # user_id=owner on every one of these: notes, quick notes and time
+    # blocks are private to their author (TaskHandler.PERSONAL_TYPES), and
+    # `teammate` never logs in (create_demo_account() only mints a token for
+    # `owner`). Work items are shared workspace-wide, so assigning them to
+    # teammates below is realistic -- they'd see them if they logged in.
     task_defaults = dict(watchers=[], labels=[], meta_data={}, settings={})
     tasks = [
         # ---- Sprint Board cards -- spread across all 4 default columns so
@@ -292,7 +286,7 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
             due_on=now - timedelta(days=3),
         ),
         Task(
-            **task_defaults,
+            **{**task_defaults, "meta_data": {"location": "Main conference room", "color": "#805AD5"}},
             task_id=uuid.uuid4(),
             workspace_id=workspace.workspace_id,
             board_id=None,
@@ -301,7 +295,8 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
             priority=TaskPriority.LOW.value,
             task_type=TaskType.MEETING.value,
             status=TaskStatus.SCHEDULED.value,
-            due_on=now + timedelta(days=14),
+            start_time=(now + timedelta(days=14)).replace(hour=14, minute=0, second=0, microsecond=0),
+            end_time=(now + timedelta(days=14)).replace(hour=16, minute=0, second=0, microsecond=0),
         ),
         Task(
             **task_defaults,
@@ -731,28 +726,73 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     db.add_all(reminders)
     db.commit()
 
+    # ---- Calendar events (shared meetings) -------------------------------
+    team = [str(u.user_id) for u in (owner, teammate, designer, qa_engineer) if u]
+    day = now.replace(minute=0, second=0, microsecond=0)
+    meetings = [
+        ("Design sync", 1, 11, 45, "#319795", "https://meet.example.com/design", team[:3]),
+        ("Sprint review", 2, 15, 60, "#3182CE", "Room 2", team),
+        ("1:1 with " + teammate.first_name, 3, 10, 30, "#38A169", "", team[:2]),
+    ]
+    db.add_all([
+        Task(
+            **task_defaults,
+            task_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            user_id=owner.user_id,
+            title=title,
+            priority=TaskPriority.MEDIUM.value,
+            task_type=TaskType.MEETING.value,
+            status=TaskStatus.SCHEDULED.value,
+            start_time=(day + timedelta(days=offset)).replace(hour=hour),
+            end_time=(day + timedelta(days=offset)).replace(hour=hour) + timedelta(minutes=minutes),
+        ) for title, offset, hour, minutes, _, _, _ in meetings
+    ])
+    db.flush()
+    for task in db.query(Task).filter(Task.workspace_id == workspace.workspace_id, Task.task_type == TaskType.MEETING.value,
+                                      Task.title.in_([m[0] for m in meetings])).all():
+        _, _, _, _, color, location, attendees = next(m for m in meetings if m[0] == task.title)
+        task.meta_data = {"color": color, "location": location}
+        task.watchers = attendees
+    db.commit()
+
     # ---- Notifications ---------------------------------------------------------
+    # Same types/wording the real events produce (utils/notifications.py);
+    # ticket keys are filled in once keys are assigned, at the end.
     notifications = [
         Notification(
             notification_id=uuid.uuid4(),
             workspace_id=workspace.workspace_id,
-            user_id=teammate.user_id,
-            title="Task assigned",
-            message=f'You were assigned "{tasks[0].title}"',
-            type="task_assigned",
+            user_id=owner.user_id,
+            title=f"{teammate.first_name} {teammate.last_name or ''} commented on {{key}}".replace("  ", " "),
+            message="I think the activities route is missing the workspace prefix -- can you take a look?",
+            type="comment",
             entity_id=tasks[0].task_id,
             entity_type="task",
+            created_at=now - timedelta(minutes=12),
         ),
         Notification(
             notification_id=uuid.uuid4(),
             workspace_id=workspace.workspace_id,
             user_id=owner.user_id,
-            title="New comment",
-            message=f"{teammate.first_name} commented on {tasks[0].title}",
-            type="comment_added",
-            entity_id=tasks[0].task_id,
+            title="{key} moved to In Progress",
+            message=f'{teammate.first_name} changed "{tasks[2].title}" from To Do to In Progress',
+            type="status_changed",
+            entity_id=tasks[2].task_id,
+            entity_type="task",
+            created_at=now - timedelta(hours=3),
+        ),
+        Notification(
+            notification_id=uuid.uuid4(),
+            workspace_id=workspace.workspace_id,
+            user_id=owner.user_id,
+            title="{key} was assigned to you",
+            message=f"{teammate.first_name} assigned you: {tasks[1].title}",
+            type="assigned",
+            entity_id=tasks[1].task_id,
             entity_type="task",
             is_read=True,
+            created_at=now - timedelta(days=1),
         ),
     ]
     db.add_all(notifications)
@@ -1464,6 +1504,13 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     db.commit()
 
     _assign_ticket_keys(db, workspace)
+
+    for notification in notifications:
+        task = db.get(Task, notification.entity_id)
+        key = TaskDtoMapper.ticket_key(task) or task.title
+        notification.title = notification.title.replace("{key}", key)
+        notification.properties = {"ticket_key": TaskDtoMapper.ticket_key(task)}
+    db.commit()
 
     return {
         "board": board,

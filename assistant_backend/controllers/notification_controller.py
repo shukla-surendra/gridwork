@@ -23,11 +23,18 @@ async def create_notification(workspace_id: str, command: NotificationCommand, u
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/read-all")
+async def mark_all_read(workspace_id: str, user: dict = Depends(gate)):
+    """Mark every one of the caller's notifications in this workspace read"""
+    return {"updated": NotificationHandler().mark_all_read(workspace_id, user.get("user_id"))}
+
 @router.put("/{notification_id}", response_model=NotificationDto)
 async def update_notification(notification_id: str, workspace_id: str, command: NotificationUpdateCommand, user: dict = Depends(gate)):
     handler = NotificationHandler()
     try:
         command.notification_id = notification_id
+        command.workspace_id = workspace_id
+        command.user_id = user.get("user_id")
         notification = handler.update_notification(command)
         return NotificationDtoMapper.map_to_notification_dto(notification)
     except HTTPException as he:
@@ -39,7 +46,7 @@ async def update_notification(notification_id: str, workspace_id: str, command: 
 async def delete_notification(notification_id: str, workspace_id: str, user: dict = Depends(gate)):
     handler = NotificationHandler()
     try:
-        command = NotificationDeleteCommand(notification_id=notification_id, workspace_id=workspace_id)
+        command = NotificationDeleteCommand(notification_id=notification_id, workspace_id=workspace_id, user_id=user.get("user_id"))
         handler.delete_notification(command)
     except HTTPException as he:
         raise he
@@ -50,7 +57,7 @@ async def delete_notification(notification_id: str, workspace_id: str, user: dic
 async def get_notification(notification_id: str, workspace_id: str, user: dict = Depends(gate)):
     handler = NotificationHandler()
     try:
-        notification = handler.get_notification(notification_id)
+        notification = handler.get_notification(notification_id, workspace_id, user.get("user_id"))
         return NotificationDtoMapper.map_to_notification_dto(notification)
     except HTTPException as he:
         raise he
@@ -63,6 +70,8 @@ async def list_notifications(workspace_id: str, entity_id: Optional[str] = None,
     try:
         notifications = handler.list_notifications(workspace_id, user.get("user_id"), entity_id, entity_type)
         return [NotificationDtoMapper.map_to_notification_dto(notification) for notification in notifications]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

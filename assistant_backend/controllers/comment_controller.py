@@ -15,11 +15,15 @@ gate = require_module_enabled("comments", default_enabled=True)
 @router.post("/", response_model=CommentDto, status_code=status.HTTP_201_CREATED)
 async def create_comment(command: CommentCommand, workspace_id: str, user: dict = Depends(gate)):
     handler = CommentHandler()
-    assert command.workspace_id == workspace_id
-    assert command.user_id == user.get("user_id")
+    # Always the URL's workspace and the caller's identity -- never trust
+    # ids from the body.
+    command.workspace_id = workspace_id
+    command.user_id = user.get("user_id")
     try:
         comment = handler.create_comment(command)
         return CommentDtoMapper.map_to_comment_dto(comment)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -28,6 +32,8 @@ async def update_comment(comment_id: str, workspace_id: str, command: CommentUpd
     handler = CommentHandler()
     try:
         command.comment_id = comment_id
+        command.workspace_id = workspace_id
+        command.user_id = user.get("user_id")
         comment = handler.update_comment(command)
         return CommentDtoMapper.map_to_comment_dto(comment)
     except HTTPException as he:
@@ -39,7 +45,7 @@ async def update_comment(comment_id: str, workspace_id: str, command: CommentUpd
 async def delete_comment(comment_id: str, workspace_id: str, user: dict = Depends(gate)):
     handler = CommentHandler()
     try:
-        command = CommentDeleteCommand(comment_id=comment_id, workspace_id=workspace_id)
+        command = CommentDeleteCommand(comment_id=comment_id, workspace_id=workspace_id, user_id=user.get("user_id"))
         handler.delete_comment(command)
     except HTTPException as he:
         raise he
@@ -50,7 +56,7 @@ async def delete_comment(comment_id: str, workspace_id: str, user: dict = Depend
 async def get_comment(comment_id: str, workspace_id: str, user: dict = Depends(gate)):
     handler = CommentHandler()
     try:
-        comment = handler.get_comment(comment_id)
+        comment = handler.get_comment(comment_id, workspace_id)
         return CommentDtoMapper.map_to_comment_dto(comment)
     except HTTPException as he:
         raise he

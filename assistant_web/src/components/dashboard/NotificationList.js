@@ -1,89 +1,97 @@
-import React, { useEffect } from "react";
+import React from "react";
 import {
   Box,
   Text,
   VStack,
   HStack,
-  Badge,
+  Flex,
+  Icon,
   Button,
+  Divider,
   useColorModeValue,
   Spinner,
   Center,
 } from "@chakra-ui/react";
+import { FiBell } from "react-icons/fi";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchNotifications, markNotificationRead } from "../../slices/notifications";
+import { markNotificationRead, markAllNotificationsRead, selectUnreadCount } from "../../slices/notifications";
+import { notificationMeta, notificationHref, asUtc } from "../../utils/notificationMeta";
+import { timeAgo } from "../../utils/locale";
 
-const getTypeColor = (type) => {
-  switch (type) {
-    case 'task_assigned':
-      return 'blue';
-    case 'comment_added':
-      return 'yellow';
-    case 'meeting':
-      return 'purple';
-    case 'deadline':
-      return 'red';
-    default:
-      return 'gray';
-  }
-};
-
-export default function NotificationList() {
+// The bell dropdown. Fetching/polling lives in the Header so the unread
+// badge stays current while this is closed.
+export default function NotificationList({ onClose }) {
   const router = useRouter();
-  const navigate = (path) => router.push(path);
   const dispatch = useDispatch();
-  const { notifications, loading } = useSelector((state) => state.notifications);
-  const bgColor = useColorModeValue("white", "gray.800");
+  const { notifications, loading, loaded } = useSelector((state) => state.notifications);
+  const unreadCount = useSelector(selectUnreadCount);
+  const unreadBg = useColorModeValue("blue.50", "whiteAlpha.100");
+  const hoverBg = useColorModeValue("gray.100", "whiteAlpha.200");
+  const mutedColor = useColorModeValue("gray.600", "gray.400");
 
-  useEffect(() => {
-    dispatch(fetchNotifications());
-  }, [dispatch]);
+  const recent = notifications.slice(0, 8);
 
-  const recent = notifications.slice(0, 5);
+  const open = (n) => {
+    if (!n.is_read) dispatch(markNotificationRead(n.notification_id));
+    const href = notificationHref(n);
+    if (href) {
+      onClose?.();
+      router.push(href);
+    }
+  };
 
   return (
-    <Box w="340px" maxH="400px" overflowY="auto" p={3}>
-      <VStack align="stretch" spacing={2}>
-        {loading && <Center py={4}><Spinner size="sm" /></Center>}
-        {!loading && recent.length === 0 && (
-          <Text color="gray.500" textAlign="center">
-            No notifications
-          </Text>
+    <Box w="360px">
+      <Flex justify="space-between" align="center" px={4} py={3}>
+        <Text fontWeight="semibold">Notifications</Text>
+        {unreadCount > 0 && (
+          <Button size="xs" variant="ghost" colorScheme="blue" onClick={() => dispatch(markAllNotificationsRead())}>
+            Mark all as read
+          </Button>
         )}
-        {recent.map((n) => (
-          <Box
-            key={n.notification_id}
-            p={3}
-            borderRadius="md"
-            bg={n.is_read ? "gray.100" : "blue.50"}
-            boxShadow="sm"
-            cursor="pointer"
-            _hover={{ bg: "blue.100" }}
-            onClick={() => {
-              if (!n.is_read) dispatch(markNotificationRead(n.notification_id));
-            }}
-          >
-            <HStack justify="space-between">
-              <Text fontWeight="bold" fontSize="sm">{n.title}</Text>
-              {!n.is_read && <Badge colorScheme="blue">New</Badge>}
+      </Flex>
+      <Divider />
+      <Box maxH="420px" overflowY="auto">
+        {loading && !loaded && <Center py={6}><Spinner size="sm" /></Center>}
+        {loaded && recent.length === 0 && (
+          <VStack py={8} spacing={2} color={mutedColor}>
+            <Icon as={FiBell} boxSize={6} />
+            <Text fontSize="sm">You're all caught up</Text>
+          </VStack>
+        )}
+        {recent.map((n) => {
+          const meta = notificationMeta(n.type);
+          return (
+            <HStack
+              key={n.notification_id}
+              align="start"
+              spacing={3}
+              px={4}
+              py={3}
+              bg={n.is_read ? "transparent" : unreadBg}
+              _hover={{ bg: hoverBg }}
+              cursor="pointer"
+              onClick={() => open(n)}
+            >
+              <Icon as={meta.icon} mt={1} color={`${meta.color}.500`} />
+              <Box flex="1" minW={0}>
+                <Text fontSize="sm" fontWeight={n.is_read ? "normal" : "semibold"} noOfLines={2}>{n.title}</Text>
+                {n.message && <Text fontSize="xs" color={mutedColor} noOfLines={2}>{n.message}</Text>}
+                <Text fontSize="xs" color={mutedColor} mt={1}>{timeAgo(asUtc(n.created_at))}</Text>
+              </Box>
+              {!n.is_read && <Box w={2} h={2} mt={2} borderRadius="full" bg="blue.500" flexShrink={0} />}
             </HStack>
-            <Text fontSize="sm" color="gray.700" mt={1}>
-              {n.message}
-            </Text>
-            <HStack mt={2} spacing={2}>
-              <Badge colorScheme={getTypeColor(n.type)}>{n.type}</Badge>
-            </HStack>
-          </Box>
-        ))}
-      </VStack>
+          );
+        })}
+      </Box>
+      <Divider />
       <Button
-        mt={4}
         w="100%"
         size="sm"
-        colorScheme="blue"
-        variant="outline"
-        onClick={() => navigate('/notifications')}
+        variant="ghost"
+        borderRadius={0}
+        onClick={() => { onClose?.(); router.push('/notifications'); }}
       >
         View all notifications
       </Button>

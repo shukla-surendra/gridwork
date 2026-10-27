@@ -30,7 +30,6 @@ import {
   BsChatDots
 } from 'react-icons/bs';
 import { 
-  FiClock, 
   FiWatch, 
   FiFileText, 
   FiCheckSquare,
@@ -206,16 +205,6 @@ const Navbar = ({ isCollapsed, onToggle }) => {
                 isCollapsed={isCollapsed}
               >
                 Calendar
-              </NavItem>
-            )}
-            {isFeatureVisible('timeblocks') && (
-              <NavItem
-                icon={FiClock}
-                to="/timeblock"
-                isActive={location.pathname === '/timeblock'}
-                isCollapsed={isCollapsed}
-              >
-                Time Block
               </NavItem>
             )}
             {isFeatureVisible('reminders') && (

@@ -14,8 +14,8 @@ class Warehouse(Base):
     name = Column(String, nullable=False)
     location = Column(String, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
 
 class Product(Base):
@@ -30,8 +30,8 @@ class Product(Base):
     unit_price = Column(Numeric(12, 2), nullable=True)
     reorder_level = Column(Integer, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
 
 
 class StockMovement(Base):
@@ -48,7 +48,7 @@ class StockMovement(Base):
     quantity = Column(Integer, nullable=False)
     reference = Column(String, nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
 
     product = relationship("Product")
     warehouse = relationship("Warehouse")

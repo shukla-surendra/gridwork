@@ -6,7 +6,8 @@ from commands.user_cmd import (
     UserCommand, 
     LoginCommand,
     EmailVerificationRequest,
-    UserUpdateCommand
+    UserUpdateCommand,
+    ChangePasswordCommand,
 )
 from handlers.user_handler import UserHandler
 from authorization.auth import get_auth_details
@@ -42,6 +43,11 @@ async def create_demo_account():
 async def get_me(user: dict = Depends(get_auth_details)):
     """Get current user's profile"""
     return UserHandler().get_user(user.get("user_id"))
+
+@router.post("/me/password", status_code=status.HTTP_200_OK)
+async def change_password(cmd: ChangePasswordCommand, user: dict = Depends(get_auth_details)):
+    """Change the signed-in user's password (current password required)"""
+    return UserHandler().change_password(user.get("user_id"), cmd)
 
 @router.put("/{user_id}", status_code=status.HTTP_200_OK)
 async def update_users(user_id: str, user_cmd: UserUpdateCommand, user: dict = Depends(get_auth_details)):

@@ -12,6 +12,17 @@ class ReminderHandler:
     def __init__(self):
         self.db = SessionLocal()
 
+    def _own(self, reminder_id, workspace_id, user_id):
+        """Reminders are personal: only their owner can touch them."""
+        try:
+            return self.db.query(Reminder).filter(
+                Reminder.reminder_id == UUID(str(reminder_id)),
+                Reminder.workspace_id == UUID(str(workspace_id)),
+                Reminder.user_id == UUID(str(user_id)),
+            ).first()
+        except ValueError:
+            return None
+
     def create_reminder(self, command: ReminderCommand) -> Reminder:
         try:
             reminder = Reminder(
@@ -60,7 +71,7 @@ class ReminderHandler:
 
     def update_reminder(self, command: ReminderUpdateCommand) -> Reminder:
         try:
-            reminder = self.db.query(Reminder).filter(Reminder.reminder_id == UUID(command.reminder_id)).first()
+            reminder = self._own(command.reminder_id, command.workspace_id, command.user_id)
             if not reminder:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reminder not found")
 
@@ -70,6 +81,11 @@ class ReminderHandler:
                 reminder.description = command.description
             if command.due_date is not None:
                 reminder.due_date = command.due_date
+                # Rescheduled: deliver it again when the new time comes
+                # (see utils/notifications.deliver_due_reminders).
+                props = dict(reminder.properties or {})
+                if props.pop("notified_for", None) is not None and command.properties is None:
+                    reminder.properties = props
             if command.repeat is not None:
                 reminder.repeat = command.repeat
             if command.is_completed is not None:
@@ -89,10 +105,7 @@ class ReminderHandler:
 
     def delete_reminder(self, command: ReminderDeleteCommand) -> bool:
         try:
-            reminder = self.db.query(Reminder).filter(
-                Reminder.reminder_id == UUID(command.reminder_id),
-                Reminder.workspace_id == UUID(command.workspace_id)
-            ).first()
+            reminder = self._own(command.reminder_id, command.workspace_id, command.user_id)
             if not reminder:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reminder not found")
 

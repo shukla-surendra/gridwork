@@ -23,6 +23,7 @@ class TaskCommand(BaseModel):
     sprint_id: Optional[str] = None
     parent_task_id: Optional[str] = None
     story_points: Optional[int] = None
+    original_estimate_minutes: Optional[int] = None
     completed: bool = False
     is_deleted: bool = False
     due_on: Optional[datetime] = None

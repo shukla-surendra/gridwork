@@ -1,12 +1,13 @@
+import random
 import uuid
-from datetime import datetime, timedelta, timezone, time
+from datetime import date, datetime, timedelta, timezone, time
 from passlib.hash import pbkdf2_sha256
 from sqlalchemy.orm import Session
 from .models.pg_models import (
     User, UserSettings, Task, Workspace, Board, Sprint, WorkspaceModule,
     Reminder, Notification, Comment, Tag, Page, Block, Database,
     DatabaseEntry, Template, Activity, Integration,
-    Chat, ChatMessage,
+    Chat, ChatMessage, Worklog, MemberCapacity, TimeOff,
     workspace_users, task_tags
 )
 from modules.crm.models import Contact, Deal, ContactActivity, DealActivity, Company, Lead, LeadActivity
@@ -71,6 +72,158 @@ def _assign_ticket_keys(db: Session, workspace: Workspace):
         for number, task in enumerate(tasks, start=1):
             task.task_number = number
         owner.next_task_number = len(tasks) + 1
+    db.commit()
+
+
+def _weekdays_between(start: date, end: date):
+    day = start
+    while day <= end:
+        if day.weekday() < 5:
+            yield day
+        day += timedelta(days=1)
+
+
+def _nth_weekday_after(day: date, n: int):
+    """The n-th weekday after `day` (n=1 is the next one)."""
+    while n:
+        day += timedelta(days=1)
+        if day.weekday() < 5:
+            n -= 1
+    return day
+
+
+def _seed_time_tracking(db: Session, workspace: Workspace, board: Board, sprints, tasks, task_defaults, people, now):
+    """Tempo-style data: estimates on sprint work, a fuller active sprint,
+    three weeks of worklogs, workload schemes and time off -- enough for
+    the Timesheets and Capacity pages to tell a story (one person over-
+    allocated, one with days off, a missed timesheet day)."""
+    owner, teammate, designer, qa = people
+    designer = designer or teammate
+    qa = qa or owner
+    sprint12, sprint13 = sprints
+    today = now.date()
+    rng = random.Random(1234)  # stable demo data across seeds
+
+    # ---- More Sprint 13 work, so every member carries a share ---------------
+    def sprint_issue(title, assignee, estimate, points, status, task_type=TaskType.TASK.value):
+        return Task(
+            **task_defaults, task_id=uuid.uuid4(), workspace_id=workspace.workspace_id, board_id=board.board_id,
+            sprint_id=sprint13.sprint_id, user_id=owner.user_id, reporter_id=owner.user_id,
+            assignee_id=assignee.user_id if assignee else None, title=title,
+            priority=TaskPriority.MEDIUM.value, task_type=task_type, status=status,
+            story_points=points, original_estimate_minutes=estimate,
+            created_at=now - timedelta(days=8),
+        )
+    extra = [
+        sprint_issue("Onboarding checklist API", owner, 3 * 480, 5, TaskStatus.IN_PROGRESS.value, TaskType.FEATURE.value),
+        sprint_issue("Invite teammates from onboarding", teammate, 6 * 480, 5, TaskStatus.IN_PROGRESS.value, TaskType.FEATURE.value),
+        sprint_issue("Onboarding welcome email copy", teammate, None, 2, TaskStatus.TODO.value),
+        sprint_issue("Empty states for onboarding screens", designer, 16 * 60, 3, TaskStatus.IN_PROGRESS.value),
+        sprint_issue("Dark mode: chart and badge colors", designer, 12 * 60, 2, TaskStatus.TODO.value),
+        sprint_issue("Regression suite for the signup flow", qa, 4 * 480, 3, TaskStatus.IN_PROGRESS.value),
+        sprint_issue("Accessibility audit of onboarding", qa, 8 * 60, 2, TaskStatus.TODO.value),
+        sprint_issue("Track onboarding funnel events", None, 6 * 60, 2, TaskStatus.TODO.value),
+    ]
+    db.add_all(extra)
+    tasks[4].sprint_id = sprint13.sprint_id  # "Design review: onboarding flow"
+    db.commit()
+
+    # ---- Estimates on the existing board cards -------------------------------
+    for task, estimate, points in (
+        (tasks[0], 16 * 60, 5),   # Fix CRM activities routing (Sprint 12)
+        (tasks[1], 6 * 60, 2),    # Fix flaky CI test (Sprint 12)
+        (tasks[2], 12 * 60, 3),   # Write onboarding docs
+        (tasks[3], 2 * 480, 5),   # Add dark mode toggle
+        (tasks[4], 4 * 60, 1),    # Design review: onboarding flow
+        (tasks[5], 4 * 60, 1),    # Upgrade dependency versions (done)
+    ):
+        task.original_estimate_minutes = estimate
+        task.story_points = task.story_points or points
+
+    # ---- Workload schemes and time off ----------------------------------------
+    # The designer is part-time (6h, Mon-Thu); the owner keeps 7h for
+    # issue work. Everyone else gets the default 8h Mon-Fri.
+    db.add_all([
+        MemberCapacity(workspace_id=workspace.workspace_id, user_id=designer.user_id, minutes_per_day=360, working_days=[0, 1, 2, 3]),
+        MemberCapacity(workspace_id=workspace.workspace_id, user_id=owner.user_id, minutes_per_day=420, working_days=[0, 1, 2, 3, 4]),
+    ])
+    sick_day = _nth_weekday_after(today - timedelta(days=9), 1)
+    vacation_start = _nth_weekday_after(today, 2)
+    vacation_end = _nth_weekday_after(vacation_start, 1)
+    holiday = _nth_weekday_after(today, 9)
+    db.add_all([
+        TimeOff(workspace_id=workspace.workspace_id, user_id=teammate.user_id, start_date=vacation_start,
+                end_date=vacation_end, kind="vacation", note="Long weekend", created_by=teammate.user_id),
+        TimeOff(workspace_id=workspace.workspace_id, user_id=designer.user_id, start_date=sick_day,
+                end_date=sick_day, kind="sick", created_by=designer.user_id),
+        TimeOff(workspace_id=workspace.workspace_id, user_id=None, start_date=holiday, end_date=holiday,
+                kind="holiday", note="Company offsite", created_by=owner.user_id),
+    ])
+
+    # ---- Three weeks of worklogs ----------------------------------------------
+    by_title = {t.title: t for t in tasks + extra}
+    sprint13_start = sprint13.start_date.date()
+    work = {
+        # person: (Sprint 12 issues, Sprint 13 issues, what they write)
+        owner.user_id: (
+            [tasks[1], by_title["Review pull request #142"]],
+            [by_title["Onboarding checklist API"], tasks[1], tasks[4]],
+            ["Implementation", "Code review", "Unblocking the team", "API design notes"],
+        ),
+        teammate.user_id: (
+            [tasks[0], tasks[5]],
+            [tasks[0], tasks[2], by_title["Invite teammates from onboarding"], tasks[4]],
+            ["Implementation", "Fixing review comments", "Writing docs", "Pairing"],
+        ),
+        designer.user_id: (
+            [tasks[3]],
+            [tasks[3], by_title["Empty states for onboarding screens"], tasks[4]],
+            ["Design iteration", "Prototype", "Handoff to dev", "User feedback review"],
+        ),
+        qa.user_id: (
+            [tasks[1], by_title["Write load tests for the checkout flow"]],
+            [by_title["Regression suite for the signup flow"], by_title["Write load tests for the checkout flow"]],
+            ["Test cases", "Exploratory testing", "Automation", "Bug verification"],
+        ),
+    }
+    schemes = {owner.user_id: (420, range(5)), designer.user_id: (360, range(4))}
+    off_days = {(teammate.user_id, d) for d in (vacation_start, vacation_end)} | {(designer.user_id, sick_day)}
+    missed = {(teammate.user_id, _nth_weekday_after(today - timedelta(days=4), 1))}  # forgot to fill in a day
+
+    worklogs = []
+    for day in _weekdays_between(today - timedelta(days=21), today):
+        for user_id, (old_pool, new_pool, notes) in work.items():
+            minutes_per_day, working_days = schemes.get(user_id, (480, range(5)))
+            if day.weekday() not in working_days or (user_id, day) in off_days or (user_id, day) in missed:
+                continue
+            # Meetings eat into the day; today is still in progress.
+            target = minutes_per_day - rng.choice([0, 30, 60, 60, 90])
+            if day == today:
+                target = rng.choice([120, 180, 240])
+            pool = new_pool if day >= sprint13_start else old_pool
+            chunks = rng.choice([1, 2, 2, 3]) if target >= 240 else 1
+            remaining = target
+            for i, task in enumerate(rng.sample(pool, min(chunks, len(pool)))):
+                last = i == min(chunks, len(pool)) - 1
+                minutes = remaining if last else max(30, round(remaining * rng.uniform(0.3, 0.6) / 15) * 15)
+                remaining -= minutes
+                worklogs.append(Worklog(
+                    workspace_id=workspace.workspace_id, task_id=task.task_id, user_id=user_id,
+                    work_date=day, duration_minutes=minutes, description=rng.choice(notes),
+                    created_at=datetime.combine(day, time(17, 0)),
+                ))
+    db.add_all(worklogs)
+
+    spent = {}
+    for w in worklogs:
+        spent[w.task_id] = spent.get(w.task_id, 0) + w.duration_minutes
+    for task in tasks + extra:
+        task.time_spent_minutes = spent.get(task.task_id, 0)
+    # Someone re-estimated after going over, and finished work has nothing left.
+    tasks[0].remaining_estimate_minutes = 4 * 60
+    for task in tasks + extra:
+        if task.status == TaskStatus.DONE.value and task.original_estimate_minutes:
+            task.remaining_estimate_minutes = 0
     db.commit()
 
 
@@ -656,6 +809,9 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
     tasks[2].sprint_id = sprints[1].sprint_id  # "Write onboarding docs"
     tasks[3].sprint_id = sprints[1].sprint_id  # "Add dark mode toggle to settings"
     db.commit()
+
+    _seed_time_tracking(db, workspace, board, sprints, tasks, task_defaults,
+                        [owner, teammate, designer, qa_engineer], now)
 
     # ---- Comments ------------------------------------------------------------
     comments = [

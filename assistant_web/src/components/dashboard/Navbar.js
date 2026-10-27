@@ -31,6 +31,8 @@ import {
 } from 'react-icons/bs';
 import { 
   FiWatch, 
+  FiClock,
+  FiPieChart,
   FiFileText, 
   FiCheckSquare,
   FiBook,
@@ -206,6 +208,26 @@ const Navbar = ({ isCollapsed, onToggle }) => {
               >
                 Calendar
               </NavItem>
+            )}
+            {isFeatureVisible('time_tracking') && (
+              <>
+                <NavItem
+                  icon={FiClock}
+                  to="/timesheets"
+                  isActive={location.pathname === '/timesheets'}
+                  isCollapsed={isCollapsed}
+                >
+                  Timesheets
+                </NavItem>
+                <NavItem
+                  icon={FiPieChart}
+                  to="/capacity"
+                  isActive={location.pathname === '/capacity'}
+                  isCollapsed={isCollapsed}
+                >
+                  Team capacity
+                </NavItem>
+              </>
             )}
             {isFeatureVisible('reminders') && (
               <NavItem

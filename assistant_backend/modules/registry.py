@@ -61,6 +61,7 @@ from controllers.assistant_controller import assistant_router
 from controllers.tasks_controller import tasks_router
 from controllers.board_controller import board_router
 from controllers.calendar_controller import calendar_router
+from controllers.time_tracking_controller import time_tracking_router
 from .manifest import ModuleManifest
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ ADOPTED_MODULES = [
     ModuleManifest(key="epics", name="Epics", description="Group board work into epics.", icon="flag", router=epic_router, default_enabled=True),
     ModuleManifest(key="sprints", name="Sprints", description="Time-boxed sprints for board work.", icon="repeat", router=sprint_router, default_enabled=True),
     ModuleManifest(key="task_links", name="Task Links", description="Link related tasks together.", icon="link", router=task_link_router, default_enabled=True),
+    ModuleManifest(key="time_tracking", name="Time Tracking", description="Worklogs, timesheets and team capacity planning.", icon="clock", router=time_tracking_router, default_enabled=True),
     ModuleManifest(key="assistant", name="AI Assistant", description="Natural-language workspace commands.", icon="cpu", router=assistant_router, default_enabled=True),
 ]
 

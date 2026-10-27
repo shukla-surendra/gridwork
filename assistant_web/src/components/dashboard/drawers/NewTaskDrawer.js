@@ -24,6 +24,7 @@ import { ISSUE_TYPES, issueTypeOf, withIssueType } from "../../../utils/issueTyp
 import EpicService from "../../../services/EpicService";
 import SprintService from "../../../services/SprintService";
 import MemberService from "../../../services/MemberService";
+import { parseDuration, formatDuration } from "../../../utils/duration";
 
 // Fibonacci-ish scale -- matches Jira's own estimation field convention.
 const STORY_POINT_OPTIONS = [1, 2, 3, 5, 8, 13, 21];
@@ -87,6 +88,9 @@ export default function NewTaskDrawer(props) {
   const [workspaceMembers, setWorkspaceMembers] = useState([]);
   const epicsEnabled = useSelector((state) => selectIsModuleEnabled(state, 'epics'));
   const sprintsEnabled = useSelector((state) => selectIsModuleEnabled(state, 'sprints'));
+  const timeTrackingEnabled = useSelector((state) => selectIsModuleEnabled(state, 'time_tracking'));
+  const [estimateText, setEstimateText] = useState('');
+  const estimateMinutes = estimateText.trim() ? parseDuration(estimateText) : null;
 
   // Epics/Sprints are toggleable modules (Settings > Modules) -- skip the
   // request when off instead of firing it just to eat a 403 on every new
@@ -332,7 +336,8 @@ export default function NewTaskDrawer(props) {
         ...currentTask,
         workspace_id,
         user_id,
-        task_type: 'task'  // Ensure task_type is set
+        task_type: 'task',  // Ensure task_type is set
+        ...(timeTrackingEnabled && estimateMinutes ? { original_estimate_minutes: estimateMinutes } : {}),
       };
 
       await dispatch(createGeneralTask(payload)).unwrap();
@@ -343,6 +348,7 @@ export default function NewTaskDrawer(props) {
         duration: 2000,
         isClosable: true,
       });
+      setEstimateText('');
       onClose();
     } catch (error) {
       console.error('Error creating task:', error);
@@ -565,6 +571,23 @@ export default function NewTaskDrawer(props) {
                     <option value="">None</option>
                     {STORY_POINT_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                   </Select>
+                  {timeTrackingEnabled && (
+                    <>
+                      <Text fontSize="sm" color={mutedColor} pl={2}>Estimate</Text>
+                      <Tooltip label={estimateMinutes ? formatDuration(estimateMinutes) : 'e.g. 2d, 4h or 1h 30m (1d = 8h)'}>
+                        <Input
+                          value={estimateText}
+                          onChange={(e) => setEstimateText(e.target.value)}
+                          placeholder="e.g. 4h"
+                          size="sm"
+                          width="110px"
+                          variant="filled"
+                          bg={inputBg}
+                          isInvalid={!!estimateText.trim() && estimateMinutes == null}
+                        />
+                      </Tooltip>
+                    </>
+                  )}
                 </HStack>
               </FormControl>
 

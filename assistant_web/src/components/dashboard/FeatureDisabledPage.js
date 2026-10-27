@@ -6,8 +6,8 @@ import Navbar from './Navbar';
 import Header from './Header';
 
 // Shown in place of a page's real content when its module has been
-// switched off in Settings > Modules -- Tasks/Boards/Calendar/Time
-// Blocking are "nav-only" toggles (see modules/registry.py): the backend
+// switched off in Settings > Modules -- Tasks/Boards/Notes/Calendar
+// are "nav-only" toggles (see modules/registry.py): the backend
 // API stays reachable (Notes, Comments, Epics, Sprints, etc. all depend
 // on Tasks/Boards existing), so this component is the only thing that
 // actually enforces the toggle for these four -- it's not just cosmetic

@@ -58,6 +58,9 @@ class TaskDto(BaseModel):
     task_number: Optional[int] = None
     ticket_key: Optional[str] = None
     story_points: Optional[int] = None
+    original_estimate_minutes: Optional[int] = None
+    remaining_estimate_minutes: Optional[int] = None
+    time_spent_minutes: int = 0
     watchers: list
     labels: list
     checklist: list = []
@@ -135,6 +138,15 @@ class TaskDtoMapper:
         return f"{prefix}-{task.task_number}" if prefix else None
 
     @staticmethod
+    def remaining_estimate(task: Task) -> Optional[int]:
+        """Stored remaining estimate, else original minus time spent."""
+        if task.remaining_estimate_minutes is not None:
+            return task.remaining_estimate_minutes
+        if task.original_estimate_minutes is None:
+            return None
+        return max(task.original_estimate_minutes - (task.time_spent_minutes or 0), 0)
+
+    @staticmethod
     def map_to_task_dto_mapper(task: Task) -> TaskDto:
         return TaskDto(
             task_id=str(task.task_id),
@@ -172,6 +184,9 @@ class TaskDtoMapper:
             task_number=task.task_number,
             ticket_key=TaskDtoMapper.ticket_key(task),
             story_points=task.story_points,
+            original_estimate_minutes=task.original_estimate_minutes,
+            remaining_estimate_minutes=TaskDtoMapper.remaining_estimate(task),
+            time_spent_minutes=task.time_spent_minutes or 0,
             watchers=task.watchers,
             labels=task.labels,
             checklist=task.checklist or [],

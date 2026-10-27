@@ -1,4 +1,4 @@
-from sqlalchemy import (Column, String, Boolean, DateTime, ForeignKey, Integer, Enum as SQLEnum, Table, Text, UniqueConstraint)
+from sqlalchemy import (Column, String, Boolean, Date, DateTime, ForeignKey, Integer, Enum as SQLEnum, Table, Text, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -134,6 +134,13 @@ class Task(Base):
     # checklist never needs to be queried/filtered independently of its task.
     checklist = Column(JSONB, nullable=True)
     story_points = Column(Integer, nullable=True)
+    # Time tracking, in minutes. time_spent_minutes is the sum of this
+    # task's worklogs, kept in step by handlers/time_tracking_handler.py so
+    # issue lists don't need an aggregate query. A null remaining estimate
+    # means "original minus spent"; once set, logging work counts it down.
+    original_estimate_minutes = Column(Integer, nullable=True)
+    remaining_estimate_minutes = Column(Integer, nullable=True)
+    time_spent_minutes = Column(Integer, nullable=False, default=0, server_default="0")
     watchers = Column(JSONB, nullable=True)
     labels = Column(JSONB, nullable=True)
     meta_data = Column(JSONB, nullable=True)
@@ -159,6 +166,54 @@ class Task(Base):
     parent_task = relationship("Task", back_populates="subtasks", remote_side=[task_id])
     outgoing_links = relationship("TaskLink", foreign_keys="TaskLink.source_task_id", back_populates="source_task")
     incoming_links = relationship("TaskLink", foreign_keys="TaskLink.target_task_id", back_populates="target_task")
+
+class Worklog(Base):
+    """Time someone spent on a work item on a given day (Tempo-style:
+    a calendar date, not a timestamp, so it lands on the day the person
+    meant regardless of time zone)."""
+    __tablename__ = "worklogs"
+
+    worklog_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.workspace_id", ondelete="CASCADE"), nullable=False, index=True)
+    task_id = Column(UUID(as_uuid=True), ForeignKey("tasks.task_id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False, index=True)
+    work_date = Column(Date, nullable=False, index=True)
+    duration_minutes = Column(Integer, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    task = relationship("Task")
+    user = relationship("User")
+
+class MemberCapacity(Base):
+    """A member's workload scheme in one workspace: how many minutes a
+    working day holds and which weekdays (0=Mon .. 6=Sun) they work.
+    Members without a row get the default 8h Mon-Fri."""
+    __tablename__ = "member_capacity"
+    __table_args__ = (UniqueConstraint("workspace_id", "user_id", name="uq_member_capacity"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.workspace_id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False)
+    minutes_per_day = Column(Integer, nullable=False, default=480)
+    working_days = Column(JSONB, nullable=False, default=lambda: [0, 1, 2, 3, 4])
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+class TimeOff(Base):
+    """An absence over whole days (inclusive). user_id null means a
+    workspace-wide holiday that applies to everyone."""
+    __tablename__ = "time_off"
+
+    time_off_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.workspace_id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=True)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    kind = Column(String, nullable=False, default="vacation")  # vacation | sick | holiday | other
+    note = Column(String, nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
 
 class TaskLink(Base):
     __tablename__ = "task_links"

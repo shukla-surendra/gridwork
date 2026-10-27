@@ -202,6 +202,7 @@ class TaskHandler:
                 sprint_id=task_cmd.sprint_id or None,
                 parent_task_id=task_cmd.parent_task_id or None,
                 story_points=task_cmd.story_points,
+                original_estimate_minutes=task_cmd.original_estimate_minutes or None,
                 user_id=task_cmd.user_id,
                 title=task_cmd.title,
                 description=task_cmd.description,

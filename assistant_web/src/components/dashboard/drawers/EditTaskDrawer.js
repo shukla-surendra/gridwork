@@ -28,6 +28,7 @@ import ConfigService from "../../../utils/config";
 import { formatLocalDateTime } from "../../../utils/locale";
 import { ISSUE_TYPES, issueTypeOf, withIssueType } from "../../../utils/issueTypes";
 import { browseUrl } from "../../../utils/issueLinks";
+import TimeTrackingSection from "../../timetracking/TimeTrackingSection";
 
 const LINK_TYPE_LABELS = {
   blocks: "Blocks",
@@ -63,6 +64,7 @@ export default function EditTaskDrawer(props) {
   const taskLinksEnabled = useSelector((state) => selectIsModuleEnabled(state, 'task_links'));
   const epicsEnabled = useSelector((state) => selectIsModuleEnabled(state, 'epics'));
   const sprintsEnabled = useSelector((state) => selectIsModuleEnabled(state, 'sprints'));
+  const timeTrackingEnabled = useSelector((state) => selectIsModuleEnabled(state, 'time_tracking'));
   const [newLabel, setNewLabel] = useState('');
   const [isAddingLabel, setIsAddingLabel] = useState(false);
   const [newChecklistItem, setNewChecklistItem] = useState('');
@@ -578,6 +580,13 @@ export default function EditTaskDrawer(props) {
                     </VStack>
                   </HStack>
                 </FormControl>
+              )}
+
+              {timeTrackingEnabled && (
+                <TimeTrackingSection
+                  task={currentTask}
+                  onTimeChange={(fields) => setCurrentTask(prev => ({ ...prev, ...fields }))}
+                />
               )}
 
               {/* Assignee -- the Task model has a single assignee_id, not

@@ -17,7 +17,7 @@ import {
 } from '@chakra-ui/react';
 import {
   FiSearch, FiCheckSquare, FiFileText, FiColumns, FiBook, FiHome, FiCalendar, FiBell,
-  FiSettings, FiUsers, FiClock, FiBarChart2, FiArrowRight,
+  FiSettings, FiUsers, FiClock, FiBarChart2, FiArrowRight, FiPieChart,
 } from 'react-icons/fi';
 import { useRouter } from 'next/router';
 import TaskService from '../../services/taskservice';
@@ -34,7 +34,9 @@ const GO_TO = [
   { label: 'Notes', href: '/notes', icon: FiFileText },
   { label: 'Wiki', href: '/wiki', icon: FiBook },
   { label: 'Calendar', href: '/calendar', icon: FiCalendar },
-  { label: 'Reminders', href: '/reminders', icon: FiClock },
+  { label: 'Timesheets', href: '/timesheets', icon: FiClock },
+  { label: 'Team capacity', href: '/capacity', icon: FiPieChart },
+  { label: 'Reminders', href: '/reminders', icon: FiBell },
   { label: 'Notifications', href: '/notifications', icon: FiBell },
   { label: 'Reports', href: '/reports', icon: FiBarChart2 },
   { label: 'Members', href: '/members', icon: FiUsers },

@@ -23,3 +23,20 @@ def test_demo_account_is_seeded_with_live_features(client):
     cal = client.get(f"/api/v1/workspaces/{ws}/calendar", headers=headers,
                      params={"start": now.isoformat(), "end": (now + timedelta(days=20)).isoformat()}).json()
     assert {"event", "focus", "due"} <= {e["kind"] for e in cal}
+
+    # Time tracking: a filled-in team timesheet and a sprint with real workload.
+    today = now.date()
+    monday = today - timedelta(days=today.weekday() + 7)
+    team = client.get(f"/api/v1/workspaces/{ws}/timesheet/team", headers=headers,
+                      params={"start": monday.isoformat(), "end": (monday + timedelta(days=6)).isoformat()}).json()
+    assert len(team["members"]) == 4
+    assert all(m["total_logged_minutes"] > 0 for m in team["members"])
+    sprints = client.get(f"/api/v1/workspaces/{ws}/capacity/sprints", headers=headers).json()
+    active = next(s for s in sprints if s["status"] == "active")
+    load = client.get(f"/api/v1/workspaces/{ws}/capacity/sprints/{active['sprint_id']}", headers=headers).json()
+    assert sum(1 for m in load["members"] if m["allocated_minutes"] > 0) >= 3
+    assert load["unassigned"]["issue_count"] >= 1
+    issues = client.get(f"/api/v1/workspaces/{ws}/tasks", headers=headers, params={"page_size": 100}).json()
+    issues = issues if isinstance(issues, list) else issues.get("items", [])
+    assert any(t["time_spent_minutes"] > 0 and t["original_estimate_minutes"] for t in issues)
+

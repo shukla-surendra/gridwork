@@ -1,5 +1,5 @@
-// Jira-style durations: "1d 2h 30m", "1.5h", "45m", or a bare number of
-// hours. A day is 8 hours, as in Jira's default time tracking settings.
+// Durations: "1d 2h 30m", "1.5h", "45m", or a bare number of
+// hours. A day is 8 hours and a week 5 days.
 export const MINUTES_PER_DAY = 8 * 60;
 
 const UNIT_MINUTES = { w: 5 * MINUTES_PER_DAY, d: MINUTES_PER_DAY, h: 60, m: 1 };

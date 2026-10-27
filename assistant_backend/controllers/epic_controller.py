@@ -74,8 +74,10 @@ async def create_epic(workspace_id: str, board_id: str, command: EpicCommand, us
 async def list_epics(workspace_id: str, board_id: str, user: dict = Depends(gate)):
     _verify_workspace_access(workspace_id, board_id, user.get("user_id"))
     try:
-        epics = EpicHandler().list_epics(board_id)
-        return [EpicDtoMapper.map_to_epic_dto(epic) for epic in epics]
+        handler = EpicHandler()
+        epics = handler.list_epics(board_id)
+        progress = handler.progress(board_id)
+        return [EpicDtoMapper.map_to_epic_dto(epic, progress.get(str(epic.epic_id))) for epic in epics]
     except HTTPException:
         raise
     except Exception as e:

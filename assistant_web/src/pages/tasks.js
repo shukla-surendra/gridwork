@@ -37,7 +37,6 @@ import Header from "@/components/dashboard/Header";
 import { useRouter } from 'next/router';
 import useSelectedIssue from '@/hooks/useSelectedIssue';
 import { FaTrash, FaEdit, FaEye } from 'react-icons/fa';
-import TaskViewModal from "@/components/dashboard/modals/TaskViewModal";
 import UnifiedEditButton from "@/components/dashboard/UnifiedEditButton";
 import UnifiedCreateButton from "@/components/dashboard/UnifiedCreateButton";
 import { ChevronRightIcon } from '@chakra-ui/icons';
@@ -128,7 +127,6 @@ export default function TasksPage() {
   const delete_modal = useDisclosure()
   const edit_task_drawer = useDisclosure()
   const new_task_drawer = useDisclosure()
-  const view_task_modal = useDisclosure()
   const tasks = useSelector(state => state.tasks.tasks);
   const tasksEnabled = useSelector((state) => selectIsModuleEnabled(state, 'tasks'));
   const dispatch = useDispatch();
@@ -157,18 +155,8 @@ export default function TasksPage() {
     selectIssue(task);
   };
 
-  const handleTaskUpdate = (updatedTask) => {
-    dispatch(updateTask({ task_id: updatedTask.task_id, data: updatedTask }))
-      .unwrap()
-      .then(() => {
-        dispatch(retrieveTasks());
-      });
-  };
-
-  const handleViewItem = (task) => {
-    setCurrentTask(task);
-    view_task_modal.onOpen();
-  };
+  // One issue view for reading and editing.
+  const handleViewItem = handleUpdateItem;
 
   const bgColor = useColorModeValue('gray.50', 'gray.900');
   const cardBg = useColorModeValue('white', 'gray.800');
@@ -438,7 +426,8 @@ export default function TasksPage() {
           isOpen: edit_task_drawer.isOpen,
           onClose: () => { edit_task_drawer.onClose(); clearSelectedIssue(); },
         }}
-        onTaskUpdate={handleTaskUpdate}
+        onTaskUpdate={initFetch}
+        onTaskDelete={initFetch}
       />
       <NewTaskDrawer
         currentTask={{}}
@@ -448,12 +437,6 @@ export default function TasksPage() {
         currentTask={currentTask}
         disclosures={delete_modal}
         type="task"
-      />
-      <TaskViewModal
-        isOpen={view_task_modal.isOpen}
-        onClose={view_task_modal.onClose}
-        task={currentTask}
-        onEdit={handleUpdateItem}
       />
     </>
   );

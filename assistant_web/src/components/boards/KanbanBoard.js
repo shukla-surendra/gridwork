@@ -166,7 +166,7 @@ function buildLanes(groupBy, tasks, epics, currentUserId) {
         byId.set(task.assignee_id, { key: task.assignee_id, label: name, avatar: task.assignee.avatar_url });
       }
     }
-    // Jira puts you first, everyone else alphabetically, Unassigned last.
+    // You first, everyone else alphabetically, Unassigned last.
     const people = [...byId.values()].sort((a, b) => {
       if (a.key === currentUserId) return -1;
       if (b.key === currentUserId) return 1;
@@ -278,7 +278,7 @@ export default function KanbanBoard({
     >
       <Box overflowX="auto" pb={4}>
         <Box minW="max-content">
-          {/* Column headers -- rendered once above all swimlanes, like Jira. */}
+          {/* Column headers -- rendered once above all swimlanes. */}
           <Flex gap={3} mb={2} position="sticky" top={0} zIndex={1}>
             {columns.map(status => {
               const tasks = visibleByStatus[status] || [];

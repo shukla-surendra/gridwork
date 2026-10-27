@@ -362,7 +362,8 @@ export default function DashboardResponsive() {
         currentTask={selectedTask}
         setCurrentTask={setSelectedTask}
         disclosures={{ isOpen: isTaskEditOpen, onClose: onTaskEditClose }}
-        onTaskUpdate={handleTaskUpdate}
+        onTaskUpdate={() => dispatch(retrieveTasks())}
+        onTaskDelete={() => { onTaskEditClose(); dispatch(retrieveTasks()); }}
       />
       <EditNoteDrawer
         currentTask={selectedTask}

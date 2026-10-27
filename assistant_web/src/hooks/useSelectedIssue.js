@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useToast } from '@chakra-ui/react';
 import TaskService from '../services/taskservice';
 
-// Jira's ?selectedIssue=ENG-42 behaviour for any page with an issue drawer:
+// ?selectedIssue=ENG-42 behaviour for any page with an issue drawer:
 // - arriving with the param opens that issue (via onOpenIssue)
 // - selectIssue(task) puts the open issue's key in the URL, so the address
 //   bar is always a shareable link to it

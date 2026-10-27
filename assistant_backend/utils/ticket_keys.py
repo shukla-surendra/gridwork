@@ -1,4 +1,4 @@
-"""Jira-style ticket key prefixes ("ENG" in "ENG-42").
+"""Ticket key prefixes ("ENG" in "ENG-42").
 
 Board keys and the workspace key share one namespace per workspace -- a
 board can't take the workspace's key or vice versa -- so a key like

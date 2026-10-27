@@ -340,12 +340,19 @@ class WorkspaceHandler:
                 .where(workspace_users.c.workspace_id == workspace_id)
             ).all()
 
+            # Workspaces created at signup have no workspace_users row for
+            # their owner -- add them, or they can't be assigned work.
+            if not any(str(m[0].user_id) == str(workspace.owner_id) for m in members):
+                owner = self.db.query(User).filter(User.user_id == workspace.owner_id).first()
+                if owner:
+                    members = [(owner, "owner"), *members]
+
             return [
                 {
                     "user_id": str(member[0].user_id),
                     "name": f"{member[0].first_name} {member[0].last_name or ''}".strip(),
                     "email": member[0].email,
-                    "role": member[1],
+                    "role": "owner" if str(member[0].user_id) == str(workspace.owner_id) else member[1],
                     # Prefer the user's real avatar_url (set at signup/via
                     # profile upload) -- ui-avatars.com's generated-initials
                     # image is only a fallback for whoever hasn't set one.

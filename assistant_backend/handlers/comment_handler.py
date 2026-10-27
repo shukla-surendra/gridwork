@@ -3,6 +3,7 @@ from uuid import UUID
 from adapters.orm.models.pg_models import Comment, Task
 from constants import PERSONAL_TASK_TYPES
 from utils import notifications
+from handlers import time_tracking_handler as tt
 import re
 from adapters.orm.models.database import SessionLocal
 from commands.comment_cmd import CommentCommand, CommentUpdateCommand, CommentDeleteCommand, PageCommentCommand
@@ -12,6 +13,18 @@ from fastapi import HTTPException
 import logging
 
 logger = logging.getLogger(__name__)
+
+MAX_COMMENT_LENGTH = 20000
+
+
+def _clean_content(content: Optional[str]) -> str:
+    text = (content or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Comment can't be empty")
+    if len(text) > MAX_COMMENT_LENGTH:
+        raise HTTPException(status_code=422, detail=f"Comment is too long (max {MAX_COMMENT_LENGTH} characters)")
+    return text
+
 
 class CommentHandler:
     def __init__(self):
@@ -35,20 +48,21 @@ class CommentHandler:
         return task
 
     def create_comment(self, command: CommentCommand) -> Comment:
+        content = _clean_content(command.content)
         task = self._commentable_task(command.workspace_id, command.task_id, command.user_id)
         try:
             comment = Comment(
                 workspace_id=UUID(command.workspace_id),
-                content=command.content,
+                content=content,
                 user_id=UUID(command.user_id),
                 task_id=task.task_id,
             )
             self.db.add(comment)
 
             # Notify everyone following the issue, then make the commenter
-            # a follower too (Jira's auto-watch on comment).
+            # a follower too (auto-watch on comment).
             if task.task_type not in self.PERSONAL_TYPES:
-                text = re.sub(r"<[^>]+>", " ", command.content or "")
+                text = re.sub(r"<[^>]+>", " ", content)
                 text = re.sub(r"\s+", " ", text).strip()
                 key = f"{task.board.key}-{task.task_number}" if task.board_id and task.board and task.board.key and task.task_number else None
                 if not key and task.task_number and task.workspace and task.workspace.key:
@@ -73,22 +87,34 @@ class CommentHandler:
             logger.error(f"Error creating comment: {str(e)}")
             raise HTTPException(status_code=500, detail="Failed to create comment")
 
-    def update_comment(self, command: CommentUpdateCommand) -> Comment:
+    def _find(self, comment_id: str, workspace_id: str) -> Comment:
         try:
             comment = self.db.query(Comment).filter(
-                Comment.comment_id == UUID(command.comment_id),
-                Comment.workspace_id == UUID(command.workspace_id),
+                Comment.comment_id == UUID(comment_id),
+                Comment.workspace_id == UUID(workspace_id),
                 Comment.is_deleted == False,
             ).first()
-            if not comment:
-                raise HTTPException(status_code=404, detail="Comment not found")
-            if str(comment.user_id) != str(command.user_id):
-                raise HTTPException(status_code=403, detail="You can only edit your own comments")
+        except ValueError:
+            comment = None
+        if not comment:
+            raise HTTPException(status_code=404, detail="Comment not found")
+        return comment
 
+    def update_comment(self, command: CommentUpdateCommand) -> Comment:
+        # Only the author can reword a comment -- not even an admin, so a
+        # comment never says something its author didn't write.
+        comment = self._find(command.comment_id, command.workspace_id)
+        if str(comment.user_id) != str(command.user_id):
+            raise HTTPException(status_code=403, detail="You can only edit your own comments")
+        if (comment.properties or {}).get("author_name"):
+            # Stored under the importer, but the words are someone else's.
+            raise HTTPException(status_code=403, detail="Imported comments can't be edited")
+        try:
             if command.content is not None:
-                comment.content = command.content
-            if command.properties is not None:
-                comment.properties = command.properties
+                content = _clean_content(command.content)
+                if content != comment.content:
+                    comment.content = content
+                    comment.properties = {**(comment.properties or {}), "edited": True}
 
             self.db.commit()
             self.db.refresh(comment)
@@ -100,16 +126,12 @@ class CommentHandler:
             raise HTTPException(status_code=500, detail="Failed to update comment")
 
     def delete_comment(self, command: CommentDeleteCommand) -> bool:
+        # Authors delete their own; owners/admins can remove any (a
+        # "Delete all comments" permission) for moderation.
+        comment = self._find(command.comment_id, command.workspace_id)
+        if str(comment.user_id) != str(command.user_id) and not tt.is_manager(self.db, comment.workspace_id, command.user_id):
+            raise HTTPException(status_code=403, detail="You can only delete your own comments")
         try:
-            comment = self.db.query(Comment).filter(
-                Comment.comment_id == UUID(command.comment_id),
-                Comment.workspace_id == UUID(command.workspace_id)
-            ).first()
-            if not comment:
-                raise HTTPException(status_code=404, detail="Comment not found")
-            if command.user_id and str(comment.user_id) != str(command.user_id):
-                raise HTTPException(status_code=403, detail="You can only delete your own comments")
-
             comment.is_deleted = True
             self.db.commit()
             return True
@@ -118,17 +140,20 @@ class CommentHandler:
             logger.error(f"Error deleting comment: {str(e)}")
             raise HTTPException(status_code=500, detail="Failed to delete comment")
 
-    def list_comments(self, workspace_id: str, task_id: str) -> List[Comment]:
+    def list_comments(self, workspace_id: str, task_id: str, user_id: str = None, oldest_first: bool = False) -> List[Comment]:
         """List every comment on a task -- not just the caller's own. A
         comment thread everyone in the workspace can see is the entire
         point; filtering by the caller's user_id here (the previous
         behavior) meant no one ever saw anyone else's comments."""
+        if user_id:
+            self._commentable_task(workspace_id, task_id, user_id)
+        order = Comment.created_at.asc() if oldest_first else Comment.created_at.desc()
         try:
             comments = self.db.query(Comment).options(joinedload(Comment.user)).filter(
                 Comment.workspace_id == UUID(workspace_id),
                 Comment.task_id == UUID(task_id),
                 Comment.is_deleted == False
-            ).order_by(Comment.created_at.desc()).all()
+            ).order_by(order).all()
 
             return comments
         except SQLAlchemyError as e:

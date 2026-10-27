@@ -1,0 +1,23 @@
+Summary,Issue key,Issue id,Issue Type,Status,Status Category,Priority,Assignee,Assignee Id,Reporter,Reporter Id,Created,Updated,Due date,Description,Labels,Labels,Sprint,Custom field (Story point estimate),Parent,Original Estimate,Remaining Estimate,Time Spent,Outward issue link (Blocks),Comment,Comment,Log Work
+Checkout revamp,SHOP-1,10001,Epic,In Progress,In Progress,High,,,Casey Morgan,acc-casey,02/Sep/26 9:00 AM,20/Oct/26 4:00 PM,,"Rebuild the checkout so it takes fewer steps.
+
+* Guest checkout
+* Saved addresses
+* One-page payment",,,,,,,,,,,,
+Customer accounts,SHOP-2,10002,Epic,To Do,To Do,Medium,,,Casey Morgan,acc-casey,02/Sep/26 9:10 AM,02/Sep/26 9:10 AM,,Self-service account pages.,,,,,,,,,,,,
+Guest checkout without an account,SHOP-3,10003,Story,In Progress,In Progress,High,Jordan Kim,acc-jordan,Casey Morgan,acc-casey,03/Sep/26 10:00 AM,22/Oct/26 11:30 AM,07/Nov/26 5:00 PM,"h2. Goal
+Let shoppers pay *without* creating an account.
+
+h3. Acceptance criteria
+# Email is the only required contact field
+# Order confirmation offers to create an account
+# Works with saved cards disabled",checkout,web,Sprint 7,5,10001,57600,28800,28800,SHOP-6,"21/Oct/26 2:15 PM;acc-casey;Design for the email step is final, see the checkout board.","22/Oct/26 9:40 AM;acc-jordan;Thanks [~accountid:acc-casey], picking up the confirmation page today.",Built the email step;21/Oct/26 9:00 AM;acc-jordan;14400
+Add API endpoint for guest orders,SHOP-4,10004,Sub-task,Done,Done,Medium,Jordan Kim,acc-jordan,Jordan Kim,acc-jordan,04/Sep/26 9:00 AM,20/Oct/26 3:00 PM,,Create {{POST /orders/guest}} with rate limiting.,,,Sprint 7,,10003,14400,0,14400,,,,Endpoint and tests;20/Oct/26 10:00 AM;acc-jordan;14400
+Card form shows wrong error on expired card,SHOP-5,10005,Bug,In Review,In Progress,Highest,Priya Patel,acc-priya,Sam Teammate,acc-sam,15/Oct/26 8:30 AM,23/Oct/26 1:00 PM,,"Steps to reproduce:
+# Enter a card that expired last month
+# Press Pay
+
+Expected: ""Card expired"". Actual: ""Payment failed"".",checkout,bug-bash,Sprint 7,2,10001,7200,3600,3600,,16/Oct/26 11:00 AM;acc-sam;Reproduced on staging with the test card ending 0069.,23/Oct/26 12:45 PM;acc-priya;Fix is up for review.,Traced the error mapping;22/Oct/26 2:00 PM;acc-priya;3600
+Saved addresses at checkout,SHOP-6,10006,Story,To Do,To Do,Medium,Sam Teammate,acc-sam,Casey Morgan,acc-casey,05/Sep/26 2:00 PM,05/Sep/26 2:00 PM,,Returning shoppers can pick a saved shipping address.,checkout,,Sprint 8,3,10001,28800,,,,,,
+Order history page,SHOP-7,10007,Story,To Do,To Do,Low,,,Casey Morgan,acc-casey,06/Sep/26 9:00 AM,06/Sep/26 9:00 AM,,List past orders with status and a reorder button.,accounts,,,5,10002,,,,,06/Sep/26 9:05 AM;acc-casey;Low priority until checkout ships.,,
+Upgrade payment SDK to v5,SHOP-8,10008,Task,Done,Done,Medium,Priya Patel,acc-priya,Jordan Kim,acc-jordan,01/Sep/26 10:00 AM,10/Sep/26 5:00 PM,,Old SDK stops being supported at year end.,tech-debt,,Sprint 6,2,,14400,0,18000,,,,SDK upgrade and smoke test;09/Sep/26 3:00 PM;acc-priya;18000

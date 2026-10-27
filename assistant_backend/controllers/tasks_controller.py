@@ -92,7 +92,7 @@ async def get_task_by_key(
     ticket_key: str,
     user: dict = Depends(get_auth_details)
 ):
-    """Get a single task by its Jira-style key, e.g. ENG-42"""
+    """Get a single task by its ticket key, e.g. ENG-42"""
     _verify_workspace_access(workspace_id, user.get("user_id"))
     try:
         return TaskHandler().get_task_by_key(

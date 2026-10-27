@@ -1,5 +1,6 @@
 from uuid import UUID
-from adapters.orm.models.pg_models import Epic
+from adapters.orm.models.pg_models import Epic, Task
+from sqlalchemy import func, case
 from adapters.orm.models.database import SessionLocal
 from commands.epic_cmd import EpicCommand, EpicUpdateCommand
 from sqlalchemy.exc import SQLAlchemyError
@@ -58,21 +59,42 @@ class EpicHandler:
             logger.error(f"Error listing epics: {str(e)}")
             raise HTTPException(status_code=500, detail="Failed to list epics")
 
+    def progress(self, board_id: str) -> dict:
+        """epic_id -> issue/point counts for the board's epics."""
+        is_done = Task.status == "done"
+        rows = self.db.query(
+            Task.epic_id,
+            func.count(Task.task_id),
+            func.sum(case((is_done, 1), else_=0)),
+            func.coalesce(func.sum(Task.story_points), 0),
+            func.coalesce(func.sum(case((is_done, Task.story_points), else_=0)), 0),
+        ).filter(
+            Task.board_id == UUID(board_id),
+            Task.epic_id.isnot(None),
+            Task.parent_task_id.is_(None),
+            Task.is_deleted == False,
+        ).group_by(Task.epic_id).all()
+        return {
+            str(epic_id): {"issue_count": total, "done_count": int(done or 0), "points_total": int(points), "points_done": int(points_done)}
+            for epic_id, total, done, points, points_done in rows
+        }
+
     def update_epic(self, command: EpicUpdateCommand) -> Epic:
         try:
             epic = self.get_epic(command.epic_id)
-            if command.title is not None:
-                epic.title = command.title
-            if command.description is not None:
-                epic.description = command.description
-            if command.color is not None:
-                epic.color = command.color
-            if command.status is not None:
-                epic.status = command.status
-            if command.start_date is not None:
-                epic.start_date = command.start_date
-            if command.due_date is not None:
-                epic.due_date = command.due_date
+            # Only fields the client sent; an explicit null clears the
+            # optional ones (description, dates).
+            fields = command.model_dump(exclude_unset=True, exclude={"epic_id"})
+            if "status" in fields and fields["status"] not in ("open", "closed"):
+                raise HTTPException(status_code=422, detail="Epic status must be open or closed")
+            if "title" in fields and not (fields["title"] or "").strip():
+                raise HTTPException(status_code=422, detail="Epic name can't be empty")
+            for field in ("title", "color", "status"):
+                if fields.get(field) is not None:
+                    setattr(epic, field, fields[field])
+            for field in ("description", "start_date", "due_date"):
+                if field in fields:
+                    setattr(epic, field, fields[field])
 
             self.db.commit()
             self.db.refresh(epic)

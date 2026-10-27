@@ -60,6 +60,7 @@ async def get_activity(activity_id: str, workspace_id: str, user: dict = Depends
 async def list_activities(
     workspace_id: str,
     entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
     limit: int = 50,
     user: dict = Depends(gate),
 ):
@@ -69,7 +70,7 @@ async def list_activities(
         # filter -- passing the caller's user_id there was silently
         # filtering every activity out (no row's entity_id ever matches a
         # user_id), so this endpoint always returned an empty list.
-        activities = handler.list_activities(workspace_id, entity_type=entity_type, limit=limit)
+        activities = handler.list_activities(workspace_id, entity_id=entity_id, entity_type=entity_type, limit=min(max(limit, 1), 200))
         return [ActivityDtoMapper.map_to_activity_dto(a) for a in activities]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

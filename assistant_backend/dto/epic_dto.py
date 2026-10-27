@@ -15,12 +15,18 @@ class EpicDto(BaseModel):
     due_date: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # Child-issue rollup (subtasks excluded).
+    issue_count: int = 0
+    done_count: int = 0
+    points_total: int = 0
+    points_done: int = 0
 
 
 class EpicDtoMapper:
     @staticmethod
-    def map_to_epic_dto(epic) -> EpicDto:
+    def map_to_epic_dto(epic, progress: dict = None) -> EpicDto:
         return EpicDto(
+            **(progress or {}),
             epic_id=str(epic.epic_id),
             workspace_id=str(epic.workspace_id),
             board_id=str(epic.board_id),

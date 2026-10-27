@@ -11,7 +11,7 @@ export const EMPTY_FILTERS = { search: '', assigneeIds: [], onlyMine: false, epi
 export const hasActiveFilters = (filters) =>
   !!(filters.search || filters.assigneeIds.length || filters.onlyMine || filters.epicId || filters.issueType);
 
-// Jira quick-filter semantics: every active filter must match (AND), and
+// Quick-filter semantics: every active filter must match (AND), and
 // within the avatar row any selected person matches (OR).
 export const matchesFilters = (task, filters, currentUserId) => {
   const q = filters.search.trim().toLowerCase();

@@ -3,7 +3,7 @@
 ## Vision
 
 One workspace that replaces the "five different SaaS tabs" habit: notetaking
-(Notion/Apple Notes), task tracking (Jira), a Kanban board (Trello), a wiki
+(Notion/Apple Notes), task tracking, a Kanban board (Trello), a wiki
 (Confluence), reminders, chat, and the personal-management layer that ties
 them together (calendar, time-blocking, reports) — scoped to a single user
 or small team's own workspace, not a multi-tenant product.
@@ -16,7 +16,7 @@ as of this writing, not aspirational.
 
 | Feature | Maps to | Status | Route |
 |---|---|---|---|
-| Tasks (priority/status/type/assignee) | Jira | **Live** — real CRUD, Redux-backed | `/tasks` |
+| Tasks (priority/status/type/assignee) | Issue tracking | **Live** — real CRUD, Redux-backed | `/tasks` |
 | Notes / quick notes | Notion / Apple Notes | **Live** — Lexical rich-text editor, real CRUD | `/notes` |
 | Time Block | Personal management | **Live** — real CRUD via `TaskDataService` | `/timeblock` |
 | CRM (Contacts/Deals/Activities) | — | **Live** — Redux thunks (`fetchContacts`/`fetchDeals`) | `/crm` |

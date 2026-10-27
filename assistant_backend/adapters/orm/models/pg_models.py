@@ -118,7 +118,7 @@ class Task(Base):
     sprint_id = Column(UUID(as_uuid=True), ForeignKey("sprints.sprint_id", ondelete="SET NULL"), nullable=True)
     # Self-referential: a subtask points at its parent via this column.
     # Kept to one level deep (a subtask's own parent_task_id must be null)
-    # -- same constraint Jira enforces -- checked in the handler, not here.
+    # -- checked in the handler, not here.
     parent_task_id = Column(UUID(as_uuid=True), ForeignKey("tasks.task_id", ondelete="SET NULL"), nullable=True)
     # Sequential per-board ticket number (1, 2, 3, ...), assigned atomically
     # from the owning board's next_task_number counter at creation time.
@@ -126,7 +126,7 @@ class Task(Base):
     # A task with no board is numbered from its workspace's counter instead
     # (Workspace.key, e.g. "PW-7"). Notes/quick notes/time blocks aren't
     # work items and stay null. Moving a task to a different board re-keys
-    # it from the new board, same as moving an issue between Jira projects.
+    # it from the new board, same as moving an issue to another project.
     task_number = Column(Integer, nullable=True)
     # Trello-style checklist: [{"id": ..., "text": ..., "done": bool}, ...].
     # A plain JSONB list rather than a child table -- same tradeoff already
@@ -168,7 +168,7 @@ class Task(Base):
     incoming_links = relationship("TaskLink", foreign_keys="TaskLink.target_task_id", back_populates="target_task")
 
 class Worklog(Base):
-    """Time someone spent on a work item on a given day (Tempo-style:
+    """Time someone spent on a work item on a given day (by
     a calendar date, not a timestamp, so it lands on the day the person
     meant regardless of time zone)."""
     __tablename__ = "worklogs"
@@ -301,7 +301,7 @@ class Board(Base):
     description = Column(String, nullable=True)
     # Short uppercase prefix for this board's tickets (e.g. "ENG"), unique
     # within the workspace -- combined with Task.task_number to render a
-    # Jira-style key like "ENG-42". Auto-generated from the board name at
+    # ticket key like "ENG-42". Auto-generated from the board name at
     # creation time; next_task_number is the atomic counter that hands out
     # task_number values (incremented via a single UPDATE...RETURNING so
     # concurrent task creates on the same board never collide).
@@ -327,7 +327,7 @@ class Epic(Base):
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
     # Hex color used for the epic's swimlane tag/left-border on cards --
-    # Jira's "epic color" convention. Free-text hex rather than an enum so
+    # epic color convention. Free-text hex rather than an enum so
     # the frontend color picker isn't schema-constrained.
     color = Column(String, nullable=False, default="#6554C0")
     status = Column(String, nullable=False, default="open")  # open | closed

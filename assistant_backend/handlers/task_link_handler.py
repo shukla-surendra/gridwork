@@ -11,6 +11,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# Both ends, with what the DTO needs for their ticket keys -- the session
+# closes before mapping, so nothing may be lazy-loaded there.
+_LINKED_TASKS = [
+    joinedload(relation).joinedload(related)
+    for relation in (TaskLink.source_task, TaskLink.target_task)
+    for related in (Task.board, Task.workspace)
+]
+
+
 class TaskLinkHandler:
     def __init__(self):
         self.db = SessionLocal()
@@ -56,7 +65,7 @@ class TaskLinkHandler:
             # them to lazy-load after this handler's session is closed
             # (the __del__-closes-session pattern this app uses elsewhere).
             return self.db.query(TaskLink).options(
-                joinedload(TaskLink.source_task), joinedload(TaskLink.target_task)
+                *_LINKED_TASKS
             ).filter(TaskLink.link_id == link.link_id).first()
         except HTTPException:
             raise
@@ -69,7 +78,7 @@ class TaskLinkHandler:
         try:
             self._get_task_or_404(task_id, workspace_id)
             return self.db.query(TaskLink).options(
-                joinedload(TaskLink.source_task), joinedload(TaskLink.target_task)
+                *_LINKED_TASKS
             ).filter(
                 or_(
                     TaskLink.source_task_id == UUID(task_id),

@@ -1,8 +1,8 @@
-"""Tempo-style time tracking and team capacity.
+"""Time tracking and team capacity.
 
 - Worklogs: time a member spent on a work item on a given day.
   Task.time_spent_minutes is kept in step with them, and a task's
-  remaining estimate counts down as work is logged (Jira's "adjust
+  remaining estimate counts down as work is logged ("adjust
   automatically"); deleting or shrinking a worklog gives the time back.
 - Capacity: a member's workload scheme (minutes per working day, which
   weekdays) minus their time off and workspace-wide holidays. Members
@@ -10,7 +10,7 @@
 - Sprint workload: per assignee, the remaining estimate of their open
   sprint issues against the capacity left in the sprint.
 
-Who sees what (Tempo's default permissions): hours a person logged and
+Who sees what: hours a person logged and
 the reason for their time off are theirs. Members see their own
 timesheet and worklogs; workspace owners/admins see everyone's. Planning
 data -- estimates, capacity, that someone is away -- is visible to the
@@ -215,7 +215,7 @@ def _check_work_date(work_date: date):
 def log_work(db, workspace_id, actor_id, task_id, work_date: date, duration_minutes: int,
              description: str = None, user_id: str = None):
     """Log time for `user_id` (default: the actor). Logging on someone
-    else's behalf needs owner/admin, like Tempo's "log work for others"."""
+    else's behalf needs owner/admin."""
     user_id = str(user_id or actor_id)
     if user_id != str(actor_id):
         if not is_manager(db, workspace_id, actor_id):

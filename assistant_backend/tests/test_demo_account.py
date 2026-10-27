@@ -40,3 +40,12 @@ def test_demo_account_is_seeded_with_live_features(client):
     issues = issues if isinstance(issues, list) else issues.get("items", [])
     assert any(t["time_spent_minutes"] > 0 and t["original_estimate_minutes"] for t in issues)
 
+
+    # Epics with progress, and an issue with a real comment thread.
+    epics = client.get(f"/api/v1/workspaces/{ws}/boards/{active['board_id']}/epics/", headers=headers).json()
+    onboarding = next(e for e in epics if e["title"] == "Onboarding revamp")
+    assert onboarding["issue_count"] >= 8 and onboarding["points_total"] > 0
+    invite = next(t for t in issues if t["title"] == "Invite teammates from onboarding")
+    thread = client.get(f"/api/v1/workspaces/{ws}/comments/tasks/{invite['task_id']}", headers=headers,
+                        params={"order": "oldest"}).json()
+    assert len(thread) == 4 and len({c["user_id"] for c in thread}) == 3 and thread[-1]["edited"] is True

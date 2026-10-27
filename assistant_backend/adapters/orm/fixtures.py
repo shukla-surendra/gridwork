@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone, time
 from passlib.hash import pbkdf2_sha256
 from sqlalchemy.orm import Session
 from .models.pg_models import (
-    User, UserSettings, Task, Workspace, Board, Sprint, WorkspaceModule,
+    User, UserSettings, Task, Workspace, Board, Sprint, Epic, WorkspaceModule,
     Reminder, Notification, Comment, Tag, Page, Block, Database,
     DatabaseEntry, Template, Activity, Integration,
     Chat, ChatMessage, Worklog, MemberCapacity, TimeOff,
@@ -92,8 +92,76 @@ def _nth_weekday_after(day: date, n: int):
     return day
 
 
+def _seed_epics_and_comments(db: Session, workspace: Workspace, board: Board, people, now):
+    """Epics with progress to show, and comment threads that read like a
+    team working the sprint -- including an edited comment."""
+    owner, teammate, designer, qa = people
+    by_title = {t.title: t for t in db.query(Task).filter(Task.board_id == board.board_id, Task.is_deleted == False)}
+
+    epics = {
+        "Onboarding revamp": ("#6554C0", "Get a new workspace to its first finished task in under ten minutes.", 14, 21, [
+            "Write onboarding docs", "Design review: onboarding flow", "Onboarding checklist API",
+            "Invite teammates from onboarding", "Onboarding welcome email copy", "Empty states for onboarding screens",
+            "Regression suite for the signup flow", "Accessibility audit of onboarding", "Track onboarding funnel events",
+        ]),
+        "Dark mode": ("#00B8D9", "A complete dark theme, including charts and badges.", 10, 10, [
+            "Add dark mode toggle to settings", "Dark mode: chart and badge colors",
+        ]),
+        "Platform reliability": ("#FF5630", "Fewer flaky tests, fewer pages at night.", 30, 30, [
+            "Fix CRM activities routing", "Fix flaky CI test on auth middleware", "Upgrade dependency versions",
+        ]),
+    }
+    for title, (color, description, started_days_ago, due_in_days, issue_titles) in epics.items():
+        epic = Epic(
+            epic_id=uuid.uuid4(), workspace_id=workspace.workspace_id, board_id=board.board_id, title=title,
+            description=description, color=color, status="open",
+            start_date=now - timedelta(days=started_days_ago), due_date=now + timedelta(days=due_in_days),
+        )
+        db.add(epic)
+        for issue_title in issue_titles:
+            if issue_title in by_title:
+                by_title[issue_title].epic = epic
+
+    threads = {
+        "Invite teammates from onboarding": [
+            (owner, 3 * 24 * 60, "Scope check: invites go out by email only for now. Slack invites can follow once we see usage.", False),
+            (teammate, 3 * 24 * 60 - 45, "Agreed. I'll keep the invite form to a list of emails plus a role picker (member or admin).", False),
+            (designer, 2 * 24 * 60, "Mock for the invite step is on the onboarding board. The role picker defaults to member.", False),
+            (teammate, 5 * 60, "Backend is done and behind the onboarding flag. Front end next; this will run into my days off, so I've moved the email copy to next sprint.", True),
+        ],
+        "Fix CRM activities routing": [
+            (owner, 6 * 24 * 60, "Backend routes are in, front-end wiring next.", False),
+            (teammate, 5 * 24 * 60, "Confirmed working against a live signup.", False),
+            (qa, 26 * 60, "Found one more case: activities on a merged contact still point at the old contact. Steps:\n1. Merge two contacts\n2. Open the surviving contact\n3. Activities tab is empty", False),
+        ],
+        "Regression suite for the signup flow": [
+            (qa, 2 * 24 * 60, "Covering email signup, Google signup and the invite link. The demo login is out of scope.", False),
+            (owner, 2 * 24 * 60 - 90, "Please add the expired invite link case, we broke it last quarter.", False),
+            (qa, 20 * 60, "Added. 14 of 22 cases are automated so far.", False),
+        ],
+        "Dark mode: chart and badge colors": [
+            (designer, 30 * 60, "Contrast fails on the yellow priority badge in dark mode. Proposing a darker amber; palette is attached to the design review.", False),
+        ],
+    }
+    seeded = []
+    for issue_title, thread in threads.items():
+        task = by_title.get(issue_title)
+        if not task:
+            continue
+        for author, minutes_ago, content, edited in thread:
+            when = now - timedelta(minutes=minutes_ago)
+            seeded.append(Comment(
+                comment_id=uuid.uuid4(), workspace_id=workspace.workspace_id, user_id=author.user_id, task_id=task.task_id,
+                content=content, created_at=when, updated_at=when + timedelta(minutes=10 if edited else 0),
+                properties={"edited": True} if edited else None,
+            ))
+    db.add_all(seeded)
+    db.commit()
+    return seeded
+
+
 def _seed_time_tracking(db: Session, workspace: Workspace, board: Board, sprints, tasks, task_defaults, people, now):
-    """Tempo-style data: estimates on sprint work, a fuller active sprint,
+    """Time tracking data: estimates on sprint work, a fuller active sprint,
     three weeks of worklogs, workload schemes and time off -- enough for
     the Timesheets and Capacity pages to tell a story (one person over-
     allocated, one with days off, a missed timesheet day)."""
@@ -812,26 +880,7 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
 
     _seed_time_tracking(db, workspace, board, sprints, tasks, task_defaults,
                         [owner, teammate, designer, qa_engineer], now)
-
-    # ---- Comments ------------------------------------------------------------
-    comments = [
-        Comment(
-            comment_id=uuid.uuid4(),
-            workspace_id=workspace.workspace_id,
-            user_id=owner.user_id,
-            task_id=tasks[0].task_id,
-            content="Backend routes are in, frontend wiring next.",
-        ),
-        Comment(
-            comment_id=uuid.uuid4(),
-            workspace_id=workspace.workspace_id,
-            user_id=teammate.user_id,
-            task_id=tasks[0].task_id,
-            content="Confirmed working against a live signup.",
-        ),
-    ]
-    db.add_all(comments)
-    db.commit()
+    comments = _seed_epics_and_comments(db, workspace, board, [owner, teammate, designer or teammate, qa_engineer or owner], now)
 
     # ---- Reminders -------------------------------------------------------------
     # user_id=owner on all of these, deliberately -- same reason every Task
@@ -1084,7 +1133,7 @@ def _seed_workspace_content(db: Session, workspace: Workspace, owner: User, team
             action="commented",
             entity_type="task",
             entity_id=tasks[0].task_id,
-            details={"comment_id": str(comments[1].comment_id)},
+            details={"comment_id": str(next(c.comment_id for c in comments if c.task_id == tasks[0].task_id and c.user_id == teammate.user_id))},
         ),
     ]
     db.add_all(activities)

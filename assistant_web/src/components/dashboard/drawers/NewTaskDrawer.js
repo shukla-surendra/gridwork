@@ -26,7 +26,7 @@ import SprintService from "../../../services/SprintService";
 import MemberService from "../../../services/MemberService";
 import { parseDuration, formatDuration } from "../../../utils/duration";
 
-// Fibonacci-ish scale -- matches Jira's own estimation field convention.
+// Fibonacci-ish scale -- the usual agile estimation convention.
 const STORY_POINT_OPTIONS = [1, 2, 3, 5, 8, 13, 21];
 
 // Task templates
@@ -470,7 +470,7 @@ export default function NewTaskDrawer(props) {
 
             {/* Task Metadata */}
             <VStack spacing={4} align="stretch">
-              {/* Issue type -- Jira-style Story/Task/Bug, only meaningful
+              {/* Issue type -- Story/Task/Bug, only meaningful
                   for cards on a board (see utils/issueTypes.js). */}
               {currentTask?.board_id && (
                 <FormControl>

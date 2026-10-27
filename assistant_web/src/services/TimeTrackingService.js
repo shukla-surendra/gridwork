@@ -1,7 +1,7 @@
 import http from "../http-common";
 import ConfigService from "../utils/config";
 
-// Worklogs, estimates, timesheets and capacity (Tempo-style).
+// Worklogs, estimates, timesheets and capacity.
 const base = () => `/api/v1/workspaces/${ConfigService.getDefaultWorkspace().workspace_id}`;
 
 const getWorklogs = (taskId) => http.get(`${base()}/tasks/${taskId}/worklogs`);

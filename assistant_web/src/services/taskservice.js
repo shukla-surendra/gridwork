@@ -42,7 +42,7 @@ const get = task_id => {
   }
 };
 
-// Jira-style key lookup ("ENG-42") -- case-insensitive on the backend.
+// Ticket key lookup ("ENG-42") -- case-insensitive on the backend.
 const getByKey = ticketKey => {
   return http.get(`/api/v1/workspaces/${ConfigService.getDefaultWorkspace().workspace_id}/tasks/key/${encodeURIComponent(ticketKey)}`);
 };

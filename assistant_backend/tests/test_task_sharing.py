@@ -1,4 +1,4 @@
-"""Work items are shared with every workspace member (Jira-style); notes,
+"""Work items are shared with every workspace member; notes,
 quick notes and time blocks stay private to their author."""
 from fastapi import status
 

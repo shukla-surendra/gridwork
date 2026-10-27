@@ -11,7 +11,7 @@ import {
   FormControl, FormLabel, Input, Textarea, SimpleGrid, Divider,
   Menu, MenuButton, MenuList, MenuItem, Tooltip, Kbd,
 } from '@chakra-ui/react';
-import { FiArrowLeft, FiPlus, FiMoreVertical, FiTrash2, FiPlay, FiCheckCircle, FiClock } from 'react-icons/fi';
+import { FiArrowLeft, FiPlus, FiMoreVertical, FiMoreHorizontal, FiTrash2, FiPlay, FiCheckCircle, FiClock, FiUpload } from 'react-icons/fi';
 import { BsKanban } from 'react-icons/bs';
 import Navbar from '../../components/dashboard/Navbar';
 import Header from '../../components/dashboard/Header';
@@ -21,6 +21,8 @@ import BoardFilters, { EMPTY_FILTERS, matchesFilters } from '../../components/bo
 import KanbanBoard from '../../components/boards/KanbanBoard';
 import { BacklogContainer, formatSprintDates } from '../../components/boards/Backlog';
 import { StartSprintModal, CompleteSprintModal } from '../../components/boards/SprintModals';
+import EpicsPanel from '../../components/boards/EpicsPanel';
+import IssueImportModal from '../../components/boards/IssueImportModal';
 import BoardService from '../../services/BoardService';
 import TaskService from '../../services/taskservice';
 import EpicService from '../../services/EpicService';
@@ -30,9 +32,9 @@ import ConfigService from '../../utils/config';
 import useSelectedIssue from '../../hooks/useSelectedIssue';
 
 const DEFAULT_COLUMNS = ["todo", "in_progress", "review", "done"];
-const EPIC_COLORS = ["#6554C0", "#36B37E", "#00B8D9", "#FF5630", "#FFAB00", "#0052CC", "#DE350B"];
 const BOARD_TAB = 0;
 const BACKLOG_TAB = 1;
+const EPICS_TAB = 2;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const daysRemainingLabel = (sprint) => {
@@ -42,7 +44,7 @@ const daysRemainingLabel = (sprint) => {
   return { text: `${days} ${days === 1 ? 'day' : 'days'} remaining`, overdue: false };
 };
 
-// Jira's "c" shortcut -- ignored while typing or with a modifier held.
+// "c" creates an issue -- ignored while typing or with a modifier held.
 const isTypingTarget = (el) =>
   el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
 
@@ -54,7 +56,7 @@ export default function BoardDetailPage() {
   const [isMenuCollapsed, setIsMenuCollapsed] = useState(false);
   const newCardDisclosure = useDisclosure();
   const editTaskDisclosure = useDisclosure();
-  const epicsModal = useDisclosure();
+  const importModal = useDisclosure();
   const sprintModal = useDisclosure();
   const startSprintModal = useDisclosure();
   const completeSprintModal = useDisclosure();
@@ -79,16 +81,14 @@ export default function BoardDetailPage() {
   const [backlogTasks, setBacklogTasks] = useState([]);
   const [sprintTasksById, setSprintTasksById] = useState({});
   const [sprintToStart, setSprintToStart] = useState(null);
-  const [newEpicTitle, setNewEpicTitle] = useState('');
-  const [newEpicColor, setNewEpicColor] = useState(EPIC_COLORS[0]);
-  const [newEpicDescription, setNewEpicDescription] = useState('');
+  // Bumped on every refresh so the Epics tab re-reads its issue lists.
+  const [dataVersion, setDataVersion] = useState(0);
   const [newSprintName, setNewSprintName] = useState('');
   const [newSprintGoal, setNewSprintGoal] = useState('');
 
   const pageBg = useColorModeValue('gray.50', 'gray.900');
   const mainBg = useColorModeValue('gray.50', 'gray.800');
   const panelBg = useColorModeValue('gray.100', 'gray.900');
-  const swatchBorder = useColorModeValue('black', 'white');
 
   const columns = useMemo(
     () => (board?.properties?.columns?.length ? board.properties.columns : DEFAULT_COLUMNS),
@@ -122,7 +122,7 @@ export default function BoardDetailPage() {
     return grouped;
   };
 
-  // Board view = the active sprint's cards, matching Jira's "board shows
+  // Board view = the active sprint's cards, the "board shows
   // the sprint you're running" model. With no active sprint yet (fresh
   // board, or between sprints) it falls back to every card on the board,
   // so boards created before this feature keep behaving exactly as before.
@@ -190,6 +190,7 @@ export default function BoardDetailPage() {
   // made from the Backlog tab doesn't bounce the user back to the Board.
   const refresh = useCallback(() => {
     loadBoard();
+    setDataVersion((v) => v + 1);
     if (tabIndex === BACKLOG_TAB) loadBacklogView();
   }, [loadBoard, loadBacklogView, tabIndex]);
 
@@ -239,34 +240,23 @@ export default function BoardDetailPage() {
   const handleTabChange = (index) => {
     setTabIndex(index);
     if (index === BACKLOG_TAB) loadBacklogView();
+    // Epic progress depends on every issue, so re-read it on entry.
+    if (index === EPICS_TAB) EpicService.getAll(boardId).then(res => setEpics(res.data)).catch(() => {});
   };
 
-  const handleCreateEpic = async () => {
-    if (!newEpicTitle.trim()) return;
-    try {
-      await EpicService.create(boardId, { title: newEpicTitle.trim(), color: newEpicColor, description: newEpicDescription || null });
-      setNewEpicTitle('');
-      setNewEpicDescription('');
-      setNewEpicColor(EPIC_COLORS[0]);
-      const res = await EpicService.getAll(boardId);
-      setEpics(res.data);
-    } catch {
-      toast({ title: "Couldn't create epic", status: "error", duration: 3000, isClosable: true });
-    }
+  const handleEpicsChanged = (deletedEpicId) => {
+    if (deletedEpicId && filters.epicId === deletedEpicId) setFilters(prev => ({ ...prev, epicId: '' }));
+    refresh();
   };
 
-  const handleDeleteEpic = async (epicId) => {
-    try {
-      await EpicService.remove(boardId, epicId);
-      setEpics(prev => prev.filter(e => e.epic_id !== epicId));
-      if (filters.epicId === epicId) setFilters(prev => ({ ...prev, epicId: '' }));
-      refresh();
-    } catch {
-      toast({ title: "Couldn't delete epic", status: "error", duration: 3000, isClosable: true });
-    }
+  const showEpicOnBoard = (epicId) => {
+    setFilters({ ...EMPTY_FILTERS, epicId });
+    setTabIndex(BOARD_TAB);
   };
 
-  // Jira pre-fills new sprints as "<KEY> Sprint <n>".
+  const me = members.find(m => m.user_id === currentUserId);
+  const canImport = ['owner', 'admin'].includes(me?.role);
+
   const openCreateSprint = () => {
     setNewSprintName(`${board?.key || board?.name || ''} Sprint ${sprints.length + 1}`.trim());
     setNewSprintGoal('');
@@ -422,8 +412,13 @@ export default function BoardDetailPage() {
                   </Button>
                 </>
               )}
-              {epicsEnabled && (
-                <Button size="sm" variant="outline" onClick={epicsModal.onOpen}>Manage Epics</Button>
+              {canImport && (
+                <Menu placement="bottom-end">
+                  <MenuButton as={IconButton} size="sm" variant="outline" icon={<FiMoreHorizontal />} aria-label="Board actions" />
+                  <MenuList fontSize="sm">
+                    <MenuItem icon={<FiUpload />} onClick={importModal.onOpen}>Import issues</MenuItem>
+                  </MenuList>
+                </Menu>
               )}
               <Tooltip label={<>Create issue <Kbd>c</Kbd></>}>
                 <Button size="sm" leftIcon={<FiPlus />} colorScheme="teal" variant="solid" onClick={() => handleAddCard(columns[0])}>
@@ -442,6 +437,7 @@ export default function BoardDetailPage() {
             <TabList>
               <Tab>{activeSprint ? 'Active sprint' : 'Board'}</Tab>
               <Tab>Backlog</Tab>
+              {epicsEnabled && <Tab>Epics</Tab>}
             </TabList>
             <TabPanels>
               <TabPanel px={0}>
@@ -535,6 +531,19 @@ export default function BoardDetailPage() {
                   />
                 </VStack>
               </TabPanel>
+
+              {epicsEnabled && (
+                <TabPanel px={0}>
+                  <EpicsPanel
+                    boardId={boardId}
+                    epics={epics}
+                    reloadKey={dataVersion}
+                    onChanged={handleEpicsChanged}
+                    onOpenIssue={handleCardClick}
+                    onShowOnBoard={showEpicOnBoard}
+                  />
+                </TabPanel>
+              )}
             </TabPanels>
           </Tabs>
         </Box>
@@ -565,6 +574,7 @@ export default function BoardDetailPage() {
           onClose: () => { editTaskDisclosure.onClose(); clearSelectedIssue(); },
         }}
         onTaskUpdate={refresh}
+        onTaskDelete={refresh}
       />
 
       <StartSprintModal
@@ -583,60 +593,13 @@ export default function BoardDetailPage() {
         onComplete={handleCompleteSprint}
       />
 
-      <Modal isOpen={epicsModal.isOpen} onClose={epicsModal.onClose} size="lg">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Epics</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <VStack align="stretch" spacing={3} mb={4}>
-              {epics.map(epic => (
-                <HStack key={epic.epic_id} justify="space-between" p={2} borderRadius="md" bg={panelBg}>
-                  <HStack>
-                    <Box w="12px" h="12px" borderRadius="full" bg={epic.color} />
-                    <Text fontSize="sm" fontWeight="medium">{epic.title}</Text>
-                  </HStack>
-                  <IconButton icon={<FiTrash2 />} size="xs" variant="ghost" aria-label="Delete epic" onClick={() => handleDeleteEpic(epic.epic_id)} />
-                </HStack>
-              ))}
-              {epics.length === 0 && <Text fontSize="sm" color="gray.400">No epics yet.</Text>}
-            </VStack>
-            <Divider mb={4} />
-            <VStack align="stretch" spacing={3}>
-              <FormControl>
-                <FormLabel fontSize="sm">New epic title</FormLabel>
-                <Input size="sm" value={newEpicTitle} onChange={(e) => setNewEpicTitle(e.target.value)} placeholder="e.g. Checkout Revamp" />
-              </FormControl>
-              <FormControl>
-                <FormLabel fontSize="sm">Description (optional)</FormLabel>
-                <Textarea size="sm" value={newEpicDescription} onChange={(e) => setNewEpicDescription(e.target.value)} />
-              </FormControl>
-              <FormControl>
-                <FormLabel fontSize="sm">Color</FormLabel>
-                <SimpleGrid columns={7} spacing={2}>
-                  {EPIC_COLORS.map(color => (
-                    <Box
-                      key={color}
-                      as="button"
-                      type="button"
-                      aria-label={`Epic color ${color}`}
-                      aria-pressed={newEpicColor === color}
-                      w="24px" h="24px" borderRadius="full" bg={color}
-                      border={newEpicColor === color ? "2px solid" : "2px solid transparent"}
-                      borderColor={newEpicColor === color ? swatchBorder : 'transparent'}
-                      onClick={() => setNewEpicColor(color)}
-                    />
-                  ))}
-                </SimpleGrid>
-              </FormControl>
-              <Button size="sm" colorScheme="teal" onClick={handleCreateEpic}>Add Epic</Button>
-            </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button onClick={epicsModal.onClose}>Close</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <IssueImportModal
+        isOpen={importModal.isOpen}
+        onClose={importModal.onClose}
+        boardId={boardId}
+        boardName={board.name}
+        onImported={refresh}
+      />
 
       <Modal isOpen={sprintModal.isOpen} onClose={sprintModal.onClose}>
         <ModalOverlay />

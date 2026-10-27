@@ -1,4 +1,4 @@
-"""add workspace ticket keys (Jira-style keys for tasks not on a board)
+"""add workspace ticket keys (ticket keys for tasks not on a board)
 
 Revision ID: b7d2e9a4c613
 Revises: d8f3b6c15a2e

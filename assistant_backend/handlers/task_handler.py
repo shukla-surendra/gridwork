@@ -14,13 +14,22 @@ import re
 import uuid
 
 
+def _history_value(value):
+    """JSON-safe, comparable form of a field value for the activity log."""
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None).isoformat(timespec="minutes")
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    return value
+
+
 class TaskHandler:
     def __init__(self):
         self.db = next(get_db())
         logger.info("TaskHandler initialized")
 
     # Personal items are private to their author. Everything else is
-    # visible to every member of the workspace, Jira-style, so an assignee
+    # visible to every member of the workspace, so an assignee
     # can actually see and update what they were assigned; work items among
     # them are numbered (ENG-42), calendar events aren't.
     UNTICKETED_TYPES = UNTICKETED_TASK_TYPES
@@ -276,7 +285,7 @@ class TaskHandler:
                 )
 
             task.is_deleted = True
-            # Same rule Jira enforces: deleting a parent takes its
+            # Deleting a parent takes its
             # subtasks with it (one level deep, so no further recursion).
             self.db.query(Task).filter(Task.parent_task_id == task.task_id).update({"is_deleted": True})
             if task.task_type not in (TaskType.NOTE.value, TaskType.QUICK_NOTE.value):
@@ -320,6 +329,9 @@ class TaskHandler:
             old_status = task.status
             old_assignee_id = task.assignee_id
             old_completed = task.completed
+            # Fields whose changes show up in the issue's History tab.
+            tracked = ("title", "priority", "story_points", "epic_id", "sprint_id", "due_on")
+            before = {f: getattr(task, f) for f in tracked}
 
             # Update fields if provided
             if task_cmd.title is not None:
@@ -379,7 +391,7 @@ class TaskHandler:
             # Re-key when the task changes board (incl. a boardless task
             # moving onto one): its old number came from a different
             # counter and could clash with an existing ticket there --
-            # Jira does the same when an issue moves between projects.
+            # Same as an issue moving between projects.
             # Also covers a note converted into a work item.
             board_changed = str(old_board_id or "") != str(task.board_id or "")
             if self._is_ticketed(task) and (board_changed or not task.task_number):
@@ -392,6 +404,10 @@ class TaskHandler:
                 changes["assignee_id"] = {"from": str(old_assignee_id) if old_assignee_id else None, "to": str(task.assignee_id) if task.assignee_id else None}
             if task_cmd.completed is not None and old_completed != task.completed:
                 changes["completed"] = {"from": old_completed, "to": task.completed}
+            for field in tracked:
+                old_value, new_value = _history_value(before[field]), _history_value(getattr(task, field))
+                if old_value != new_value:
+                    changes[field] = {"from": old_value, "to": new_value}
             if changes and task.task_type not in (TaskType.NOTE.value, TaskType.QUICK_NOTE.value):
                 self._log_activity(
                     task.workspace_id, task_cmd.user_id, "updated", "task", task.task_id,
@@ -522,7 +538,7 @@ class TaskHandler:
             )
 
     def _ticket_key_clause(self, workspace_id, ticket_key):
-        """SQL condition matching the task a Jira-style key names, or None
+        """SQL condition matching the task a ticket key names, or None
         if it isn't a key in this workspace. The prefix is a board's key, or
         the workspace's own key for boardless tasks."""
         parsed = parse_ticket_key(ticket_key)
@@ -541,7 +557,7 @@ class TaskHandler:
         return None
 
     def get_task_by_key(self, workspace_id: str, ticket_key: str, user_id: str):
-        """Resolve a Jira-style key ("ENG-42") to its task: the prefix is
+        """Resolve a ticket key ("ENG-42") to its task: the prefix is
         either a board's key or the workspace's own key (boardless tasks)."""
         key_match = self._ticket_key_clause(workspace_id, ticket_key)
         task = self.db.query(Task).filter(

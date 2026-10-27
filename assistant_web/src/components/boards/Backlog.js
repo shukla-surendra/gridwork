@@ -18,7 +18,7 @@ export const formatSprintDates = (sprint) => {
   return sprint.start_date ? `From ${fmt(sprint.start_date)}` : `Until ${fmt(sprint.end_date)}`;
 };
 
-// Jira's three status-category pills (To Do / In Progress / Done) shown
+// Three status-category pills (To Do / In Progress / Done) shown
 // as story-point totals in each sprint header.
 function StatusCategoryPoints({ tasks }) {
   const todo = sumPoints(tasks.filter(t => TODO_STATUSES.has(t.status)));
@@ -95,7 +95,7 @@ function BacklogRow({ task, epic, epics, moveTargets, onOpen, onChangeEpic, onCh
   );
 }
 
-// Jira's inline "+ Create issue": stays open after each Enter so several
+// Inline "+ Create issue": stays open after each Enter so several
 // issues can be typed in a row; Escape closes it.
 function InlineCreate({ onCreate }) {
   const [open, setOpen] = useState(false);

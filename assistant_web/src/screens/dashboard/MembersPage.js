@@ -380,11 +380,12 @@ const MembersPage = () => {
                               </Td>
                               <Td>{member.email}</Td>
                               <Td>
-                                <Badge colorScheme={member.role === 'admin' ? 'purple' : 'blue'}>
+                                <Badge colorScheme={member.role === 'owner' ? 'green' : member.role === 'admin' ? 'purple' : 'blue'}>
                                   {member.role}
                                 </Badge>
                               </Td>
                               <Td>
+                                {member.role !== 'owner' && (
                                 <Menu>
                                   <MenuButton
                                     as={IconButton}
@@ -411,6 +412,7 @@ const MembersPage = () => {
                                     </MenuItem>
                                   </MenuList>
                                 </Menu>
+                                )}
                               </Td>
                             </Tr>
                           ))}

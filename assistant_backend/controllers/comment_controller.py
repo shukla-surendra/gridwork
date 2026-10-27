@@ -64,11 +64,13 @@ async def get_comment(comment_id: str, workspace_id: str, user: dict = Depends(g
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/tasks/{task_id}", response_model=List[CommentDto])
-async def list_comments(workspace_id: str, task_id: str, user: dict = Depends(gate)):
+async def list_comments(workspace_id: str, task_id: str, order: str = "newest", user: dict = Depends(gate)):
     handler = CommentHandler()
     try:
-        comments = handler.list_comments(workspace_id, task_id)
+        comments = handler.list_comments(workspace_id, task_id, user.get("user_id"), oldest_first=(order == "oldest"))
         return [CommentDtoMapper.map_to_comment_dto(comment) for comment in comments]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

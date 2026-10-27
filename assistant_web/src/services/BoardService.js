@@ -26,7 +26,14 @@ const remove = (boardId) => {
   return http.delete(`/api/v1/workspaces/${workspace_id}/boards/${boardId}`);
 };
 
+// CSV issue import. dryRun previews what would be created without saving.
+const importIssues = (boardId, csv, dryRun = true) => {
+  const workspace_id = ConfigService.getDefaultWorkspace().workspace_id;
+  return http.post(`/api/v1/workspaces/${workspace_id}/boards/${boardId}/import`, { csv, dry_run: dryRun });
+};
+
 const BoardService = {
+  importIssues,
   getAll,
   get,
   create,

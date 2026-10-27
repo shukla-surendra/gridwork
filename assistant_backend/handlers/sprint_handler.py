@@ -83,7 +83,7 @@ class SprintHandler:
 
     def start_sprint(self, sprint_id: str) -> Sprint:
         """Move a planned sprint to active. A board can only have one
-        active sprint at a time -- same rule Jira enforces -- so refuse
+        active sprint at a time, so refuse
         rather than silently demoting the currently-active one."""
         try:
             sprint = self.get_sprint(sprint_id)
@@ -113,7 +113,7 @@ class SprintHandler:
 
     def complete_sprint(self, sprint_id: str) -> Sprint:
         """Complete an active sprint. Unfinished cards return to the
-        backlog (sprint_id cleared) -- Jira's default "move to backlog"
+        backlog (sprint_id cleared) -- the default "move to backlog"
         behavior; done cards stay tagged to the sprint for velocity
         history/reporting."""
         try:

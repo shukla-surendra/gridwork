@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from commands.task_link_cmd import INVERSE_LABELS
+from dto.task_dto import TaskDtoMapper
 
 
 class RelatedTaskSummary(BaseModel):
@@ -9,6 +10,7 @@ class RelatedTaskSummary(BaseModel):
     title: str
     status: str
     task_type: str
+    ticket_key: Optional[str] = None
 
 
 class TaskLinkDto(BaseModel):
@@ -37,6 +39,7 @@ class TaskLinkDtoMapper:
                 title=related.title,
                 status=related.status,
                 task_type=related.task_type,
+                ticket_key=TaskDtoMapper.ticket_key(related),
             ),
             created_at=link.created_at,
         )

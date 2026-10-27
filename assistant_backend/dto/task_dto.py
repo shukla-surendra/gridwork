@@ -12,6 +12,10 @@ class CommentDto(BaseModel):
     is_deleted: bool
     created_at: datetime
     updated_at: datetime
+    edited: bool = False
+    # Set on imported comments whose author isn't a
+    # member here; the comment is stored under the importing user.
+    author_name: Optional[str] = None
     user: Optional[dict] = None
     replies: List['CommentDto'] = []
 
@@ -104,6 +108,8 @@ class CommentDtoMapper:
             is_deleted=comment.is_deleted,
             created_at=comment.created_at,
             updated_at=comment.updated_at,
+            edited=bool((comment.properties or {}).get("edited")),
+            author_name=(comment.properties or {}).get("author_name"),
             user={
                 'user_id': str(comment.user.user_id),
                 'first_name': comment.user.first_name,

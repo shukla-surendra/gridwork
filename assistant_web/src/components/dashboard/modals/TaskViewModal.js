@@ -27,10 +27,7 @@ import {
   Icon,
   Grid,
   GridItem,
-  Textarea,
   Button,
-  AvatarBadge,
-  useToast,
   Checkbox,
   Progress,
 } from "@chakra-ui/react";
@@ -48,61 +45,24 @@ import {
 } from "react-icons/fa";
 import { useSelector } from 'react-redux';
 import { formatLocalDateTime } from '../../../utils/locale';
-import CommentService from '../../../services/CommentService';
-import ConfigService from '../../../utils/config';
+import IssueComments from '../../issues/IssueComments';
 import { selectIsModuleEnabled } from '../../../slices/modules';
 
 const TaskViewModal = ({ isOpen, onClose, task, onEdit }) => {
   const commentsEnabled = useSelector((state) => selectIsModuleEnabled(state, 'comments'));
-  const [newComment, setNewComment] = useState("");
-  const [comments, setComments] = useState([]);
   const [content, setContent] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const toast = useToast();
   
   const bg = useColorModeValue("white", "gray.800");
   const borderColor = useColorModeValue("gray.200", "gray.700");
   const infoBg = useColorModeValue("gray.50", "gray.700");
   const tagBg = useColorModeValue("blue.50", "blue.900");
   const tagColor = useColorModeValue("blue.700", "blue.200");
-  const commentBg = useColorModeValue("gray.50", "gray.700");
 
   useEffect(() => {
     if (task?.description) {
       setContent(task.description);
     }
   }, [task?.description]);
-
-  useEffect(() => {
-    // Comments is a toggleable module (Settings > Modules) -- skip the
-    // request entirely when it's off instead of firing it and eating a
-    // 403 (and the error toast below) on every task view.
-    if (task?.task_id && commentsEnabled) {
-      fetchComments();
-    }
-  }, [task, commentsEnabled]);
-
-  const fetchComments = async () => {
-    try {
-      const workspace = ConfigService.getDefaultWorkspace();
-      const userId = ConfigService.getUserId();
-      const response = await CommentService.listComments(workspace.workspace_id, task.task_id, userId);
-      setComments(response.data);
-    } catch (error) {
-      // A disabled module 403s here -- that's an expected, silent
-      // no-comments state (see commentsEnabled above), not an error
-      // worth interrupting the user with a toast for.
-      if (error.response?.status !== 403) {
-        toast({
-          title: "Error fetching comments",
-          description: error.message,
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-        });
-      }
-    }
-  };
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -127,43 +87,6 @@ const TaskViewModal = ({ isOpen, onClose, task, onEdit }) => {
         return 'green';
       default:
         return 'gray';
-    }
-  };
-
-  const handleAddComment = async () => {
-    if (!newComment.trim()) return;
-
-    try {
-      setIsLoading(true);
-      const workspace = ConfigService.getDefaultWorkspace();
-      const userId = ConfigService.getUserId();
-      
-      const commentData = {
-        workspace_id: workspace.workspace_id,
-        content: newComment,
-        user_id: userId,
-        task_id: task.task_id
-      };
-
-      await CommentService.createComment(workspace.workspace_id, commentData);
-      setNewComment('');
-      fetchComments();
-      toast({
-        title: 'Comment added',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
-    } catch (error) {
-      toast({
-        title: 'Error adding comment',
-        description: error.message,
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -369,52 +292,7 @@ const TaskViewModal = ({ isOpen, onClose, task, onEdit }) => {
                 <Text fontWeight="bold">Comments</Text>
               </Flex>
 
-              <VStack align="start" spacing={4} mb={4}>
-                {comments.map((comment) => (
-                  <Box
-                    key={comment.comment_id}
-                    w="100%"
-                    p={3}
-                    bg={commentBg}
-                    borderRadius="md"
-                    border="1px solid"
-                    borderColor={borderColor}
-                  >
-                    <Flex justify="space-between" align="center" mb={2}>
-                      <HStack>
-                        <Avatar size="sm" name="User">
-                          <AvatarBadge boxSize="1.25em" bg="green.500" />
-                        </Avatar>
-                        <Text fontWeight="bold">User</Text>
-                      </HStack>
-                      <Text fontSize="sm" color="gray.500">
-                        Just now
-                      </Text>
-                    </Flex>
-                    <Text>{comment.content}</Text>
-                  </Box>
-                ))}
-              </VStack>
-
-              <Box w="100%">
-                <Textarea
-                  placeholder="Add a comment..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  mb={2}
-                  size="sm"
-                  rows={3}
-                />
-                <Button
-                  colorScheme="blue"
-                  size="sm"
-                  onClick={handleAddComment}
-                  isDisabled={!newComment.trim() || isLoading}
-                  isLoading={isLoading}
-                >
-                  Add Comment
-                </Button>
-              </Box>
+              <IssueComments taskId={task.task_id} />
             </Box>
             </>
             )}

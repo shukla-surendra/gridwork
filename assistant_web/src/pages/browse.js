@@ -4,7 +4,7 @@ import { Box, Center, Spinner, VStack, Text, Button, Heading, useColorModeValue 
 import TaskService from '@/services/taskservice';
 import { issuePagePath } from '@/utils/issueLinks';
 
-// Jira's /browse/KEY permalink: /browse?key=ENG-42 resolves the key and
+// /browse/KEY permalink: /browse?key=ENG-42 resolves the key and
 // forwards to the page that owns the issue, which opens it.
 export default function BrowseIssuePage() {
   const router = useRouter();

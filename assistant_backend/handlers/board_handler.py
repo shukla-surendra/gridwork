@@ -19,7 +19,7 @@ class BoardHandler:
         self.db = SessionLocal()
 
     def _generate_key(self, name: str, workspace_id) -> str:
-        """Jira-style short prefix -- avoids every key already used in the
+        """Short ticket prefix -- avoids every key already used in the
         workspace, including the workspace's own key for boardless tasks."""
         return generate_key(name, taken_keys(self.db, workspace_id), fallback="BRD")
 

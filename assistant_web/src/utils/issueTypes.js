@@ -1,6 +1,6 @@
 import { FiBookmark, FiCheckSquare, FiAlertOctagon, FiChevronsUp, FiChevronUp, FiChevronDown, FiMinus } from 'react-icons/fi';
 
-// Jira-style issue types. Stored in Task.meta_data.issue_type rather than
+// Issue types. Stored in Task.meta_data.issue_type rather than
 // Task.task_type -- task_type already separates tasks from notes/time
 // blocks across the app (and is filtered on by several list endpoints), so
 // overloading it would hide board cards from those views. A card with no
@@ -25,7 +25,7 @@ export const withIssueType = (task, issueType) => ({
   meta_data: { ...(task?.meta_data || {}), issue_type: issueType },
 });
 
-// Jira's priority arrows -- keyed by the lowercase values the backend
+// Priority arrows -- keyed by the lowercase values the backend
 // stores (see PRIORITY_COLOR in taskStatus.js).
 export const PRIORITY_ICONS = {
   urgent: { icon: FiChevronsUp, color: 'red.500' },

@@ -6,6 +6,9 @@ from handlers.board_handler import BoardHandler
 from handlers.workspace_handlers import WorkspaceHandler
 from commands.board_cmd import BoardCommand, BoardUpdateCommand, BoardDeleteCommand
 from dto.board_dto import BoardDto, BoardDtoMapper
+from adapters.orm.models.database import SessionLocal
+from handlers import issue_import_handler
+from pydantic import BaseModel
 from config import logger
 
 
@@ -103,6 +106,23 @@ async def delete_board(workspace_id: str, board_id: str, user: dict = Depends(ge
     except Exception as e:
         logger.error(f"Error deleting board: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class IssueImportRequest(BaseModel):
+    csv: str
+    # Preview by default: nothing is saved unless the caller says so.
+    dry_run: bool = True
+
+
+@router.post("/{board_id}/import")
+def import_issues(workspace_id: str, board_id: str, body: IssueImportRequest, user: dict = Depends(get_auth_details)):
+    """Import a CSV issue export into this board (owners/admins only)."""
+    _verify_workspace_access(workspace_id, user.get("user_id"))
+    db = SessionLocal()
+    try:
+        return issue_import_handler.import_issues_csv(db, workspace_id, board_id, user.get("user_id"), body.csv, dry_run=body.dry_run)
+    finally:
+        db.close()
 
 
 board_router = router

@@ -12,7 +12,7 @@ import LogWorkModal from './LogWorkModal';
 
 const TIME_FIELDS = ['original_estimate_minutes', 'remaining_estimate_minutes', 'time_spent_minutes'];
 
-// Jira's time tracking field on an issue: estimate vs logged, the
+// Time tracking on an issue: estimate vs logged, the
 // worklogs themselves, and "Log time". Estimate and worklog changes save
 // immediately (not with the drawer's Save) and are merged back into the
 // task through onTimeChange, so unsaved drawer edits aren't clobbered.
